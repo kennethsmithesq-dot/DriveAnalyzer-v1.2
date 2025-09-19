@@ -22,7 +22,13 @@ import os
 
 
 def resource_path(relative_path: str) -> str:
-    """Return absolute path to resource, working for dev and PyInstaller bundles."""
+    """Return absolute path to resource, working for dev and PyInstaller bundles.
+
+    When running as a PyInstaller --onefile executable, files added with
+    --add-data are extracted to a temporary folder accessible via
+    sys._MEIPASS. This helper returns the correct path in both dev and
+    frozen environments.
+    """
     base_path = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
     return os.path.join(base_path, relative_path)
 
@@ -1027,12 +1033,6 @@ class MidiChordAnalyzer(tk.Tk):
                             merged_chords[root] = min(candidates, key=chord_priority)
                     merged_basses = set(prev[2]) | set(ev[2])
                     # union event notes and pitches to avoid losing pitch data during merge
-                    prev_notes = set(prev[3]) if len(prev) > 3 else set()
-                    prev_pitches = set(prev[4]) if len(prev) > 4 else set()
-                    cur_notes = set(ev[3]) if len(ev) > 3 else set()
-                    cur_pitches = set(ev[4]) if len(ev) > 4 else set()
-                    merged_notes = prev_notes | cur_notes
-                    merged_pitches = prev_pitches | cur_c
                     prev_notes = set(prev[3]) if len(prev) > 3 else set()
                     prev_pitches = set(prev[4]) if len(prev) > 4 else set()
                     cur_notes = set(ev[3]) if len(ev) > 3 else set()
