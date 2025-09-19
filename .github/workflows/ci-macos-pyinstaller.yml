@@ -1,0 +1,193 @@
+name: macOS PyInstaller Build (x86_64 + arm64)
+
+on:
+  pull_request:
+    branches: [ main, add/macos-ci-from-main ]
+  workflow_dispatch:
+
+jobs:
+  build-x86_64:
+    name: Build (x86_64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and install python.org universal2 Python 3.11
+        run: |
+          set -eux
+          curl -LO https://www.python.org/ftp/python/3.11.8/python-3.11.8-macos11.pkg
+          sudo installer -pkg python-3.11.8-macos11.pkg -target /
+          echo "/usr/local/bin" >> $GITHUB_PATH
+          python3 --version
+          which python3
+          python3 -c "import sys; print(sys.executable)"
+
+      - name: Install build deps
+        run: |
+          set -eux
+          rm -rf .venv_x86_64
+          arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
+          source .venv_x86_64/bin/activate
+          arch -x86_64 pip install --upgrade pip
+          arch -x86_64 pip install numpy matplotlib
+          arch -x86_64 pip install --upgrade pyinstaller
+          if [ -f requirements.txt ]; then
+            arch -x86_64 pip install -r requirements.txt
+          else
+            arch -x86_64 pip install reportlab music21 pillow mido pygame
+          fi
+          arch -x86_64 python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          rm -rf build dist *.spec || true
+          arch -x86_64 pip freeze > installed-packages.txt || true
+          ls -la > ls-root.txt || true
+
+      - name: Copy DejaVu fonts to assets/fonts
+        run: |
+          set -eux
+          source .venv_x86_64/bin/activate
+          FONT_SRC=$(arch -x86_64 python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
+          mkdir -p assets/fonts
+          cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
+          ls -la assets/fonts || true
+
+      - name: Build with PyInstaller (x86_64 app bundle)
+        run: |
+          set -eux
+          source .venv_x86_64/bin/activate
+          echo "== PYINSTALLER: APP BUNDLE BUILD ==" > build-app.log
+          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
+            --add-data assets/title.png:. \
+            --add-data assets/ico.png:. \
+            --add-data assets/flat.png:. \
+            --add-data assets/sharp.png:. \
+            --add-data assets/fonts:assets/fonts \
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
+          if [ -d dist/DriveAnalyzer.app ]; then
+            chmod -R a+rX dist/DriveAnalyzer.app || true
+          fi
+          cp build-app.log build-app-x86_64.log || true
+
+      - name: Package artifact (zip .app)
+        run: |
+          set -eux
+          if [ -d dist/DriveAnalyzer.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-x86_64.app.zip
+            ls -la driveanalyzer-x86_64.app.zip
+          else
+            echo "Warning: .app bundle not found"
+            ls -la dist || true
+          fi
+
+      - name: Upload artifact (.app zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-x86_64-app
+          path: driveanalyzer-x86_64.app.zip
+
+      - name: Upload build logs and diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-x86_64-logs
+          path: |
+            build-app-x86_64.log
+            build-env.txt
+            ls-root.txt
+
+  build-arm64:
+    name: Build (arm64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure runner is Apple Silicon (arm64)
+        run: |
+          set -eux
+          uname -m
+          python3 -c "import platform; print(platform.machine())"
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "This job requires an Apple Silicon (arm64) runner. Failing to avoid accidental x86 execution."
+            exit 1
+          fi
+
+      - name: Download and install python.org universal2 Python 3.11
+        run: |
+          set -eux
+          curl -LO https://www.python.org/ftp/python/3.11.8/python-3.11.8-macos11.pkg
+          sudo installer -pkg python-3.11.8-macos11.pkg -target /
+          echo "/usr/local/bin" >> $GITHUB_PATH
+          python3 --version
+          which python3
+          python3 -c "import sys; print(sys.executable)"
+
+      - name: Install build deps (arm64/native)
+        run: |
+          set -eux
+          rm -rf .venv_arm64
+          /usr/local/bin/python3 -m venv .venv_arm64
+          source .venv_arm64/bin/activate
+          pip install --upgrade pip
+          pip install numpy matplotlib
+          pip install --upgrade pyinstaller
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install reportlab music21 pillow mido pygame
+          fi
+          python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env-arm64.txt || true
+          rm -rf build dist *.spec || true
+          pip freeze > installed-packages-arm64.txt || true
+          ls -la > ls-root-arm64.txt || true
+
+      - name: Copy DejaVu fonts to assets/fonts
+        run: |
+          set -eux
+          source .venv_arm64/bin/activate
+          FONT_SRC=$(python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
+          mkdir -p assets/fonts
+          cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
+          ls -la assets/fonts || true
+
+      - name: Build with PyInstaller (arm64 app bundle)
+        run: |
+          set -eux
+          source .venv_arm64/bin/activate
+          echo "== PYINSTALLER: ARM64 APP BUNDLE BUILD ==" > build-app-arm64.log
+          python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
+            --add-data assets/title.png:. \
+            --add-data assets/ico.png:. \
+            --add-data assets/flat.png:. \
+            --add-data assets/sharp.png:. \
+            --add-data assets/fonts:assets/fonts \
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
+          if [ -d dist/DriveAnalyzer.app ]; then
+            chmod -R a+rX dist/DriveAnalyzer.app || true
+          fi
+          cp build-app-arm64.log build-app-arm64.log || true
+
+      - name: Package artifact (zip .app)
+        run: |
+          set -eux
+          if [ -d dist/DriveAnalyzer.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-arm64.app.zip
+            ls -la driveanalyzer-arm64.app.zip
+          else
+            echo "Warning: .app bundle not found"
+            ls -la dist || true
+          fi
+
+      - name: Upload artifact (.app zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-arm64-app
+          path: driveanalyzer-arm64.app.zip
+
+      - name: Upload build logs and diagnostics (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-arm64-logs
+          path: |
+            build-app-arm64.log
+            build-env-arm64.txt
+            ls-root-arm64.txt
