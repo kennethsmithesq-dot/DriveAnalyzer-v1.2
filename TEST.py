@@ -2052,56 +2052,14 @@ class GridWindow(tk.Toplevel):#
         from reportlab.pdfgen import canvas as pdf_canvas
 
         import os, math
-        # Prefer to use bundled DejaVu fonts placed into assets/fonts by the CI build
+        # Always use the bundled DejaVuSans.ttf from assets/fonts
+        font_path = resource_path(os.path.join('assets', 'fonts', 'DejaVuSans.ttf'))
         try:
-            assets_fonts_dir = resource_path(os.path.join('assets', 'fonts'))
-            dejavu_candidates = []
-            if os.path.isdir(assets_fonts_dir):
-                for fn in os.listdir(assets_fonts_dir):
-                    if fn.lower().startswith('dejavu') and fn.lower().endswith('.ttf'):
-                        dejavu_candidates.append(os.path.join(assets_fonts_dir, fn))
-            # Fallback to older expected folder name if CI used a different layout
-            if not dejavu_candidates:
-                legacy_path = resource_path(os.path.join('dejavu-fonts-ttf-2.37', 'ttf', 'DejaVuSans.ttf'))
-                if os.path.exists(legacy_path):
-                    dejavu_candidates.append(legacy_path)
-
-            # Prefer a non-italic/oblique candidate when possible (avoid files like "-Oblique" or "-Italic").
-            pdf_font_name = 'Helvetica'  # fallback
-            registered_path = None
-            if dejavu_candidates:
-                chosen = None
-                for p in dejavu_candidates:
-                    lower = os.path.basename(p).lower()
-                    if ('oblique' in lower) or ('italic' in lower):
-                        continue
-                    # prefer explicit DejaVuSans.ttf filename
-                    if 'dejavusans.ttf' in lower or 'dejavu' in lower:
-                        chosen = p
-                        break
-                if not chosen:
-                    # If only italic/oblique variants present, fall back to first candidate
-                    chosen = dejavu_candidates[0]
-
-                try:
-                    # Register under a deterministic internal name so we can force usage
-                    pdf_font_name = 'DejaVuForce'
-                    pdfmetrics.registerFont(TTFont(pdf_font_name, chosen))
-                    registered_path = chosen
-                except Exception:
-                    # registration failed; fall back to Helvetica
-                    pdf_font_name = 'Helvetica'
-
-            # Debug: print which font (if any) was registered for PDF output
-            try:
-                if registered_path:
-                    print(f"[DEBUG] Registered PDF font '{pdf_font_name}' from: {registered_path}")
-                else:
-                    print("[DEBUG] No bundled DejaVu font registered for PDF; using fallback fonts.")
-            except Exception:
-                pass
-        except Exception:
-            # If resource_path or os.listdir fails, ignore and continue with defaults
+            if os.path.exists(font_path):
+                pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+        except Exception as e:
+            print(f"Warning: Could not register DejaVuSans font: {e}")
+            # silent fallback to default fonts
             pass
 
         pdf_path = filedialog.asksaveasfilename(
@@ -2174,7 +2132,7 @@ class GridWindow(tk.Toplevel):#
                 # Row labels + horizontal grid lines
                 for root, row in self.root_to_row.items():
                     y_center = height - (margin_y + row * cell_size + cell_size / 2)
-                    c.setFont(pdf_font_name, 12)
+                    c.setFont("DejaVuSans", 12)
                     enh_map = {'F#': 'F#/Gb', 'Db': 'Db/C#', 'Ab': 'Ab/G#', 'Eb': 'Eb/D#'}
                     label_raw = enh_map.get(root, root)
                     note_label = label_raw.replace('b', '♭').replace('#', '♯')
@@ -2245,7 +2203,7 @@ class GridWindow(tk.Toplevel):#
                                 function_label = beautify_chord(function_label)
                             text_color = HexColor("#FFFFFF") if chord_type == "7" else HexColor("#000000")
                             c.setFillColor(text_color)
-                            c.setFont(pdf_font_name, 8)
+                            c.setFont("DejaVuSans", 8)
                             c.drawCentredString(x, y - 4, function_label)
 
                 # Bass dots
