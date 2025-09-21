@@ -17,9 +17,90 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from music21 import converter, note, chord as m21chord, meter, stream
 import subprocess
-import sys
 import os
+import sys
+import platform
+import atexit
+# ---------------- Windows font loader helpers ----------------
+import os
+import sys
+import platform
+import atexit
 
+# Windows-specific: load a font file into the running process so Tk can see it.
+if platform.system() == "Windows":
+    try:
+        import ctypes
+        _gdi32 = ctypes.windll.gdi32
+        _user32 = ctypes.windll.user32
+    except Exception:
+        _gdi32 = None
+        _user32 = None
+
+def _resource_path(relative_path: str) -> str:
+    """Return absolute path for resource whether running from source or PyInstaller bundle."""
+    if getattr(sys, 'frozen', False):
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    else:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, relative_path)
+
+def _find_bundled_dejavu_ttf() -> str | None:
+    """Return path to a bundled DejaVu TTF if present, otherwise None."""
+    candidates = [
+        'assets/fonts/DejaVuSans.ttf',
+        'assets/fonts/DejaVuSans-Bold.ttf',
+        'dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf',
+    ]
+    for rel in candidates:
+        p = _resource_path(rel)
+        if os.path.isfile(p):
+            return p
+    return None
+
+def _load_windows_font_into_process(ttf_path: str) -> bool:
+    """
+    Load a TTF into the current process using AddFontResourceExW(FR_PRIVATE).
+    Returns True if added successfully (non-zero return).
+    """
+    if platform.system() != "Windows" or _gdi32 is None:
+        return False
+    try:
+        FR_PRIVATE = 0x10  # load for this process only
+        # AddFontResourceExW expects a wide char string (LPCWSTR)
+        try:
+            added = _gdi32.AddFontResourceExW(ctypes.c_wchar_p(str(ttf_path)), FR_PRIVATE, 0)
+        except Exception:
+            # Fallback: pass Python string directly if c_wchar_p fails for some reason
+            added = _gdi32.AddFontResourceExW(str(ttf_path), FR_PRIVATE, 0)
+
+        if added == 0:
+            return False
+
+        # Notify other apps (best-effort) so font lists refresh
+        try:
+            HWND_BROADCAST = 0xFFFF
+            WM_FONTCHANGE = 0x001D
+            SMTO_ABORTIFHUNG = 0x0002
+            result = ctypes.c_ulong()
+            _user32.SendMessageTimeoutW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0, SMTO_ABORTIFHUNG, 1000, ctypes.byref(result))
+        except Exception:
+            pass
+
+        # Register cleanup to remove the font for this process on exit
+        def _remove():
+            try:
+                _gdi32.RemoveFontResourceExW(ctypes.c_wchar_p(str(ttf_path)), FR_PRIVATE, 0)
+            except Exception:
+                try:
+                    _gdi32.RemoveFontResourceExW(str(ttf_path), FR_PRIVATE, 0)
+                except Exception:
+                    pass
+        atexit.register(_remove)
+        return True
+    except Exception as ex:
+        print("[FONT] _load_windows_font_into_process failed:", ex)
+        return False
 
 def resource_path(relative_path: str) -> str:
     """Return absolute path to resource, working for dev and PyInstaller bundles.
@@ -2842,7 +2923,32 @@ class EntropyAnalyzer:
             self.logger(f"[Phase7] Step: {name}")
             func(self)
     # Legend print handled in step_stage1_strengths
-
+    # Try to probe font families without creating a real Tk window.
+    try:
+        import tkinter as _tk
+        import tkinter.font as _tkfont
+        # Use a lightweight Tcl interpreter rather than _tk.Tk() to avoid creating
+        # a full Tk application (which can emit events when destroyed).
+        try:
+            tcl_interp = _tk.Tcl()
+            # `font.families()` accepts an optional `root` argument in some tkinter versions.
+            # Pass the Tcl interpreter if supported; otherwise call without root.
+            try:
+                fams = _tkfont.families(root=tcl_interp)
+            except TypeError:
+                # Older tkinter may not accept `root` param on families(); call without root.
+                fams = _tkfont.families()
+        except Exception:
+            # If Tcl creation fails, fall back to empty list (safe).
+            fams = []
+        # Only print if explicitly enabled
+        if VERBOSE_FONT_DEBUG:
+            contains = 'DejaVu Sans' in fams if fams else False
+            print(f"[FONT] Loaded DejaVu into process: {ok}; sample families contain 'DejaVu Sans'? {contains}")
+    except Exception:
+        # Quiet failure is fine — no print
+        pass
+    
 if __name__ == "__main__":
     app = MidiChordAnalyzer()
     app.mainloop()
