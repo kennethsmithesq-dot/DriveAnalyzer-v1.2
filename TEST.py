@@ -1835,41 +1835,35 @@ class GridWindow(tk.Toplevel):#
             'Ab': 'Ab/G#',
             'Eb': 'Eb/D#'
         }
-        # Probe available fonts once to choose best rendering for accidentals
-        try:
-            # tkfont.families() returns an iterable of family-name strings
-            available_fonts = set(tkfont.families())
-        except Exception:
-            # If probing fails (rare on some embedded Tk builds), fall back to empty set
-            available_fonts = set()
-        prefer_dejavu = any(name.lower().startswith('dejavu') for name in available_fonts)
-        segui_available = any('segoe' in name.lower() for name in available_fonts)
-
+        # Load and display image labels for chord roots
         for root, row in self.root_to_row.items():
             y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
-            label_text = enh_map.get(root, root)
-            label_text = label_text.replace('b', '♭').replace('#', '♯')
-
-            # Choose font: prefer DejaVuSans when accidentals are present (better glyph coverage),
-            # otherwise prefer Segoe UI for system consistency. Fall back to default Tk font.
-            if ('♭' in label_text or '♯' in label_text) and prefer_dejavu:
-                family = next((n for n in available_fonts if n.lower().startswith('dejavu')), 'DejaVu Sans')
-            elif segui_available:
-                family = next((n for n in available_fonts if 'segoe' in n.lower()), 'Segoe UI')
-            else:
-                family = tkfont.nametofont('TkDefaultFont').cget('family')
-
+            image_number = row + 1  # Convert 0-based row index to 1-based image numbering
+            
             try:
-                font_choice = (family, 14)
-                self.left_canvas.create_text(left_col_width - 8, y, text=label_text, anchor='e', font=font_choice, fill="black")
-            except Exception:
-                # If font creation or drawing fails for any reason, log and fallback to default font
+                # Load the corresponding numbered image
+                image_path = resource_path(f"assets\\images\\{image_number}.png")
+                img = Image.open(image_path)
+                photo = ImageTk.PhotoImage(img)
+                
+                # Create image on canvas, centered in the left column
+                x_center = left_col_width // 2
+                self.left_canvas.create_image(x_center, y, image=photo, anchor='center')
+                
+                # Keep a reference to prevent garbage collection
+                if not hasattr(self, '_label_images'):
+                    self._label_images = []
+                self._label_images.append(photo)
+                
+            except Exception as e:
+                # Fallback to text if image loading fails
+                print(f"[WARNING] Failed to load image {image_number}.png: {e}")
                 try:
-                    self.left_canvas.create_text(left_col_width - 8, y, text=label_text, anchor='e', fill="black")
+                    # Simple fallback text
+                    fallback_text = root.replace('b', '♭').replace('#', '♯')
+                    self.left_canvas.create_text(left_col_width - 8, y, text=fallback_text, anchor='e', font=("Arial", 12), fill="black")
                 except Exception as ex:
-                    import traceback
-                    print("[ERROR] Failed to create left-column label for root:", root, "label:", label_text)
-                    traceback.print_exc()
+                    print(f"[ERROR] Failed to create fallback label for root {root}: {ex}")
         
         #Inside your GridWindow __init__ method or GUI setup:
  
