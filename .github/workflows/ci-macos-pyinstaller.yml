@@ -59,9 +59,8 @@ jobs:
           arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
-            --add-data assets/flat.png:. \
-            --add-data assets/sharp.png:. \
             --add-data assets/fonts:assets/fonts \
+            --add-data assets/images:assets/images \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
@@ -157,9 +156,8 @@ jobs:
           python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
-            --add-data assets/flat.png:. \
-            --add-data assets/sharp.png:. \
             --add-data assets/fonts:assets/fonts \
+            --add-data assets/images:assets/images \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
