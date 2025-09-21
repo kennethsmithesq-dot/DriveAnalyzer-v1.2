@@ -1841,8 +1841,8 @@ class GridWindow(tk.Toplevel):#
             image_number = row + 1  # Convert 0-based row index to 1-based image numbering
             
             try:
-                # Load the corresponding numbered image
-                image_path = resource_path(f"assets\\images\\{image_number}.png")
+                # Load the corresponding numbered image (use os.path.join for cross-platform paths)
+                image_path = resource_path(os.path.join("assets", "images", f"{image_number}.png"))
                 img = Image.open(image_path)
                 photo = ImageTk.PhotoImage(img)
                 
@@ -1858,6 +1858,7 @@ class GridWindow(tk.Toplevel):#
             except Exception as e:
                 # Fallback to text if image loading fails
                 print(f"[WARNING] Failed to load image {image_number}.png: {e}")
+                print(f"[DEBUG] Attempted path: {resource_path(os.path.join('assets', 'images', f'{image_number}.png'))}")
                 try:
                     # Simple fallback text
                     fallback_text = root.replace('b', '♭').replace('#', '♯')
@@ -2130,7 +2131,7 @@ class GridWindow(tk.Toplevel):#
                     enh_map = {'F#': 'F#/Gb', 'Db': 'Db/C#', 'Ab': 'Ab/G#', 'Eb': 'Eb/D#'}
                     label_raw = enh_map.get(root, root)
                     note_label = label_raw.replace('b', '♭').replace('#', '♯')
-                    c.drawRightString(margin_left - 8, y_center + 4, note_label)
+                    c.drawRightString(margin_left - 8, y_center - 4, note_label)
 
                     y_line = height - (margin_y + row * cell_size)
                     c.setStrokeColor(HexColor("#dddddd"))
