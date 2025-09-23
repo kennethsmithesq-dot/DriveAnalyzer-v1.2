@@ -282,7 +282,7 @@ class MidiChordAnalyzer(tk.Tk):
         # Insert the title.png image centered
         try:
             from PIL import Image, ImageTk
-            img_path = resource_path("title.png")
+            img_path = resource_path(os.path.join("assets", "title.png"))
             title_img = Image.open(img_path)
             title_photo = ImageTk.PhotoImage(title_img)
             title_label = tk.Label(self.result_text, image=title_photo, bd=0)
@@ -777,48 +777,146 @@ class MidiChordAnalyzer(tk.Tk):
                         events[key]["event_pitches"] = set(window_pitches)
 
         # --- Neighbour / passing-note detection ---
-        # Detect cases where two consecutive melodic notes together with sustained/supporting notes
-        # form a full chord. This treats brief passing tones flanked by sustained notes as part of the chord.
+        # NEW ALGORITHM: Detect harmonic stability with melodic change
+        # Look for cases where exactly one note changes while 2+ others are retained,
+        # and BIND related events together at the foundational timing
         if getattr(self, 'neighbour_notes_searching', False):
-            # single_notes: (start, end, pitch) from earlier
-            # Build a sorted list of single-note entries by onset
-            melodic_single = sorted(single_notes, key=lambda x: x[0])
-            for i in range(len(melodic_single) - 1):
-                s1, e1, p1 = melodic_single[i]
-                s2, e2, p2 = melodic_single[i + 1]
-                # Only consider notes that are consecutive (no intervening single with same or earlier onset)
-                if s2 <= s1:
-                    continue
-                # Gather supporting pitches that are sounding at the time span covering both notes
-                span_start = s1
-                span_end = e2
-                supporting_pcs = set()
-                supporting_pitches = set()
-                for st, en, prs in note_events:
-                    # Treat as supporting if the pitch is sounding at either end of the span:
-                    #  - struck earlier and still sounding at the span start, or
-                    #  - struck before the span end and still sounding at or after the span end.
-                    # This captures pitches that were struck just before the two-note window
-                    # but sustained into it, while still excluding short passing notes that
-                    # both start and end inside the span.
-                    if (st <= span_start and en > span_start) or (st < span_end and en >= span_end):
-                        supporting_pcs.update({pp % 12 for pp in prs})
-                        supporting_pitches.update(prs)
-                combined_pcs = {p1 % 12, p2 % 12} | supporting_pcs
-                if len(combined_pcs) < 3:
-                    continue
-                # Try to detect chords from the combined pcs
-                chords = self.detect_chords(combined_pcs, debug=False)
-                if chords:
-                    bar, beat, ts = offset_to_bar_beat(span_start)
-                    key = (bar, beat, ts)
-                    if key not in events:
-                        events[key] = {"chords": set(), "basses": set(), "event_notes": set(combined_pcs)}
-                    events[key]["chords"].update(chords)
-                    events[key]["basses"].add(self.semitone_to_note(min(supporting_pitches | {p1, p2}) % 12))
-                    events[key]["event_notes"] = set(combined_pcs)
-                    events[key]["event_pitches"] = set(supporting_pitches | {p1, p2})
-                    # (debug print removed)
+            # Group all note events by bar for boundary respect
+            notes_by_bar = {}
+            for st, en, prs in note_events:
+                bar, _, _ = offset_to_bar_beat(st)
+                if bar not in notes_by_bar:
+                    notes_by_bar[bar] = []
+                notes_by_bar[bar].append((st, en, prs))
+            
+            # Track events to merge - store as {early_key: [later_keys_to_merge]}
+            events_to_bind = {}
+            
+            # Process each bar separately
+            for bar_num, bar_notes in notes_by_bar.items():
+                # Sort all note events by start time
+                bar_notes.sort(key=lambda x: x[0])
+                
+                # Track state changes: collect all unique time points where notes start or end
+                time_points = set()
+                for st, en, prs in bar_notes:
+                    time_points.add(st)
+                    time_points.add(en)
+                time_points = sorted(time_points)
+                
+                # Analyze state at each time point
+                for i in range(len(time_points) - 1):
+                    current_time = time_points[i]
+                    next_time = time_points[i + 1]
+                    
+                    # Find all notes sounding at current_time
+                    current_state = set()
+                    for st, en, prs in bar_notes:
+                        if st <= current_time < en:
+                            current_state.update({p % 12 for p in prs})
+                    
+                    # Find all notes sounding at next_time
+                    next_state = set()
+                    for st, en, prs in bar_notes:
+                        if st <= next_time < en:
+                            next_state.update({p % 12 for p in prs})
+                    
+                    # Check if we have exactly one note changing
+                    if len(current_state) >= 3 and len(next_state) >= 3:
+                        added = next_state - current_state
+                        removed = current_state - next_state
+                        retained = current_state & next_state
+                        
+                        # Exactly one note change: one added, one removed, 2+ retained
+                        if len(added) == 1 and len(removed) == 1 and len(retained) >= 2:
+                            old_note = list(removed)[0]
+                            new_note = list(added)[0]
+                            
+                            # Test if {old_note, new_note, retained_notes} forms a valid seventh chord
+                            test_pcs = {old_note, new_note} | retained
+                            
+                            # Look for passing notes within the duration of retained notes that might complete better chords
+                            # Find the time span during which the retained notes are sounding
+                            retained_start = current_time
+                            retained_end = next_time
+                            for st, en, prs in bar_notes:
+                                if st <= current_time < en:
+                                    pitch_classes = {p % 12 for p in prs}
+                                    if pitch_classes & retained:  # If this contributes to retained notes
+                                        retained_end = max(retained_end, en)
+                            
+                            # Look for any notes that sound during the retained note period
+                            passing_pcs = set()
+                            for st, en, prs in bar_notes:
+                                # Include notes that start and end within the retained note duration
+                                if retained_start <= st < retained_end and retained_start < en <= retained_end:
+                                    passing_pcs.update({p % 12 for p in prs})
+                            
+                            # Test with passing notes included
+                            enhanced_test_pcs = test_pcs | passing_pcs
+                            
+                            if len(enhanced_test_pcs) >= 4:  # Need at least 4 notes for seventh chord
+                                # Try both versions and prefer the enhanced one if it produces better chords
+                                basic_chords = self.detect_chords(test_pcs, debug=False)
+                                enhanced_chords = self.detect_chords(enhanced_test_pcs, debug=False)
+                                
+                                # Use enhanced version if it found chords, otherwise fall back to basic
+                                final_chords = enhanced_chords if enhanced_chords else basic_chords
+                                final_test_pcs = enhanced_test_pcs if enhanced_chords else test_pcs
+                                
+                                if final_chords:
+                                    if passing_pcs:
+                                        print(f"[NEIGHBOUR DEBUG] Bar {bar_num}: Found {old_note}->{new_note}, retained {sorted(retained)}, passing {sorted(passing_pcs)}, chords: {final_chords}")
+                                    else:
+                                        print(f"[NEIGHBOUR DEBUG] Bar {bar_num}: Found {old_note}->{new_note}, retained {sorted(retained)}, chords: {final_chords}")
+                                    
+                                    # Find the foundational event (earliest time with retained notes)
+                                    foundation_time = current_time
+                                    foundation_bar, foundation_beat, foundation_ts = offset_to_bar_beat(foundation_time)
+                                    foundation_key = (foundation_bar, foundation_beat, foundation_ts)
+                                    
+                                    # Find the completion event (when new note appears)
+                                    completion_time = next_time
+                                    completion_bar, completion_beat, completion_ts = offset_to_bar_beat(completion_time)
+                                    completion_key = (completion_bar, completion_beat, completion_ts)
+                                    
+                                    print(f"[BIND DEBUG] Foundation: {foundation_key}, Completion: {completion_key}")
+                                    
+                                    # Plan to bind completion event into foundation event
+                                    if foundation_key not in events_to_bind:
+                                        events_to_bind[foundation_key] = []
+                                    if completion_key != foundation_key:
+                                        events_to_bind[foundation_key].append(completion_key)
+                                        print(f"[BIND DEBUG] Planned to bind {completion_key} into {foundation_key}")
+                                    
+                                    # Enhance the foundation event with the discovered chords
+                                    if foundation_key not in events:
+                                        events[foundation_key] = {"chords": set(), "basses": set(), "event_notes": set()}
+                                    events[foundation_key]["chords"].update(final_chords)
+                                    events[foundation_key]["event_notes"].update(final_test_pcs)
+            
+            # Execute the binding: merge later events into foundation events
+            print(f"[BIND DEBUG] Events to bind: {events_to_bind}")
+            for foundation_key, completion_keys in events_to_bind.items():
+                if foundation_key in events:
+                    print(f"[BIND DEBUG] Processing foundation {foundation_key}")
+                    for completion_key in completion_keys:
+                        if completion_key in events:
+                            print(f"[BIND DEBUG] Found completion event {completion_key} to merge")
+                            # Merge the completion event into the foundation event
+                            completion_event = events[completion_key]
+                            events[foundation_key]["chords"].update(completion_event.get("chords", set()))
+                            events[foundation_key]["basses"].update(completion_event.get("basses", set()))
+                            events[foundation_key]["event_notes"].update(completion_event.get("event_notes", set()))
+                            events[foundation_key]["event_pitches"] = events[foundation_key].get("event_pitches", set()) | completion_event.get("event_pitches", set())
+                            
+                            # Remove the completion event since it's now merged
+                            del events[completion_key]
+                            print(f"[BIND DEBUG] Merged {completion_key} into {foundation_key}")
+                        else:
+                            print(f"[BIND DEBUG] Completion event {completion_key} not found in events")
+                else:
+                    print(f"[BIND DEBUG] Foundation event {foundation_key} not found in events")
 
         print(f"[DEBUG] Number of events built: {len(events)}")
         print(f"[DEBUG] Event keys: {list(events.keys())}")
