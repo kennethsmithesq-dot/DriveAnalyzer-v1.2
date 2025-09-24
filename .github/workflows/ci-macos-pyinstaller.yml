@@ -265,3 +265,75 @@ jobs:
             build-exe-windows.log
             build-env-windows.txt
             ls-root-windows.txt
+
+  package-releases:
+    name: Package Release Distributions
+    runs-on: ubuntu-latest
+    needs: [build-x86_64, build-arm64, build-windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Mac release package
+        run: |
+          mkdir -p mac_release
+          
+          # Extract and rename the Mac apps
+          cd artifacts/driveanalyzer-x86_64-app
+          unzip -q driveanalyzer-x86_64.app.zip
+          mv DriveAnalyzer.app ../mac_release/drive_analyzer_x86_64.app
+          cd ..
+          
+          cd driveanalyzer-arm64-app
+          unzip -q driveanalyzer-arm64.app.zip
+          mv DriveAnalyzer.app ../mac_release/drive_analyzer_arm64.app
+          cd ..
+          
+          # Copy sample XML files and manual
+          cp -r ../assets/sample_xml mac_release/
+          cp ../assets/manual.pdf mac_release/
+          
+          # Create the Mac zip
+          cd mac_release
+          zip -r ../drive_analyzer_v1_2_mac.zip .
+          cd ..
+          
+          ls -la drive_analyzer_v1_2_mac.zip
+
+      - name: Create Windows release package
+        run: |
+          mkdir -p windows_release
+          
+          # Extract and rename the Windows exe
+          cd artifacts/driveanalyzer-windows-exe
+          unzip -q driveanalyzer-windows.zip
+          mv DriveAnalyzer.exe ../windows_release/drive_analyzer_windows.exe
+          cd ..
+          
+          # Copy sample XML files and manual
+          cp -r ../assets/sample_xml windows_release/
+          cp ../assets/manual.pdf windows_release/
+          
+          # Create the Windows zip
+          cd windows_release
+          zip -r ../drive_analyzer_v1_2.zip .
+          cd ..
+          
+          ls -la drive_analyzer_v1_2.zip
+
+      - name: Upload Mac release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: drive-analyzer-v1-2-mac
+          path: drive_analyzer_v1_2_mac.zip
+
+      - name: Upload Windows release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: drive-analyzer-v1-2-windows
+          path: drive_analyzer_v1_2.zip
