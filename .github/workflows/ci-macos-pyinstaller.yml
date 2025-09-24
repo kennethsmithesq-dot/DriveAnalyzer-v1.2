@@ -294,7 +294,7 @@ jobs:
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml mac_release/
-          cp assets/Manual .pdf mac_release/
+          cp assets/manual.pdf mac_release/
           
           # Create the Mac zip
           cd mac_release
@@ -315,7 +315,7 @@ jobs:
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml windows_release/
-          cp assets/Manual .pdf windows_release/
+          cp assets/manual.pdf windows_release/
           
           # Create the Windows zip
           cd windows_release
