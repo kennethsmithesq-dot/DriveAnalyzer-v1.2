@@ -286,17 +286,15 @@ jobs:
           # Extract and rename the Mac apps
           cd artifacts/driveanalyzer-x86_64-app
           unzip -q driveanalyzer-x86_64.app.zip
-          mv DriveAnalyzer.app ../mac_release/drive_analyzer_x86_64.app
-          cd ..
-          
-          cd driveanalyzer-arm64-app
+          mv DriveAnalyzer.app ../../mac_release/drive_analyzer_x86_64.app
+          cd ../driveanalyzer-arm64-app
           unzip -q driveanalyzer-arm64.app.zip
-          mv DriveAnalyzer.app ../mac_release/drive_analyzer_arm64.app
-          cd ..
+          mv DriveAnalyzer.app ../../mac_release/drive_analyzer_arm64.app
+          cd ../..
           
           # Copy sample XML files and manual
-          cp -r ../assets/sample_xml mac_release/
-          cp ../assets/manual.pdf mac_release/
+          cp -r assets/sample_xml mac_release/
+          cp assets/manual.pdf mac_release/
           
           # Create the Mac zip
           cd mac_release
@@ -312,12 +310,12 @@ jobs:
           # Extract and rename the Windows exe
           cd artifacts/driveanalyzer-windows-exe
           unzip -q driveanalyzer-windows.zip
-          mv DriveAnalyzer.exe ../windows_release/drive_analyzer_windows.exe
-          cd ..
+          mv DriveAnalyzer.exe ../../windows_release/drive_analyzer_windows.exe
+          cd ../..
           
           # Copy sample XML files and manual
-          cp -r ../assets/sample_xml windows_release/
-          cp ../assets/manual.pdf windows_release/
+          cp -r assets/sample_xml windows_release/
+          cp assets/manual.pdf windows_release/
           
           # Create the Windows zip
           cd windows_release
