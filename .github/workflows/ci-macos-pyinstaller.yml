@@ -295,10 +295,10 @@ jobs:
           # Copy sample XML files and manual
           cp -r assets/sample_xml mac_release/
           cp assets/manual.pdf mac_release/
-          
-          # Create the Mac zip
+
+          # Zip only the contents of mac_release, so they appear at the root of the archive
           cd mac_release
-          zip -r ../drive_analyzer_v1_2_mac.zip .
+          zip -r ../drive_analyzer_v1_2_mac.zip ./*
           cd ..
           
           ls -la drive_analyzer_v1_2_mac.zip
@@ -316,12 +316,12 @@ jobs:
           # Copy sample XML files and manual
           cp -r assets/sample_xml windows_release/
           cp assets/manual.pdf windows_release/
-          
-          # Create the Windows zip
+
+          # Zip only the contents of windows_release, so they appear at the root of the archive
           cd windows_release
-          zip -r ../drive_analyzer_v1_2.zip .
+          zip -r ../drive_analyzer_v1_2.zip ./*
           cd ..
-          
+
           ls -la drive_analyzer_v1_2.zip
 
       - name: Upload Mac release package
