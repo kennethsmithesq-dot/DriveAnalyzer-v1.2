@@ -153,8 +153,8 @@ class MidiChordAnalyzer(tk.Tk):
         self.include_anacrusis = True
         self.include_non_drive_events = True
         self.arpeggio_searching = True
-        # New: neighbour/passing notes detection (OFF by default)
-        self.neighbour_notes_searching = False
+        # New: neighbour/passing notes detection (ON by default)
+        self.neighbour_notes_searching = True
         # Arpeggio vs. block-chord similarity threshold (0.0..1.0). If an arpeggio's pitch-class
         # set shares less than this proportion with the simultaneous block-chord, discard it.
         self.arpeggio_block_similarity_threshold = 0.5
@@ -382,11 +382,10 @@ class MidiChordAnalyzer(tk.Tk):
         """Open simple settings dialog and apply choices."""
         dialog = tk.Toplevel(self)
         dialog.title("Analysis Settings")
-        dialog.geometry("420x450")
+        dialog.geometry("420x480")
 
         # Option variables
         include_triads_var = tk.BooleanVar(value=self.include_triads)
-        sensitivity_var = tk.StringVar(value=self.sensitivity)
         remove_repeats_var = tk.BooleanVar(value=self.remove_repeats)
         include_anacrusis_var = tk.BooleanVar(value=self.include_anacrusis)
         arpeggio_searching_var = tk.BooleanVar(value=self.arpeggio_searching)
@@ -407,7 +406,7 @@ class MidiChordAnalyzer(tk.Tk):
         # Separator line
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
-        ttk.Label(dialog, text="Collapse sensitivity (1=Low, 5=High):").pack(anchor="w", padx=12, pady=(8, 0))
+        ttk.Label(dialog, text="Merge similar events together (1=low merging, 5=high merging):").pack(anchor="w", padx=12, pady=(8, 0))
         # Normal endpoints so left shows Low (1) and right shows High (5)
         sens_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=sensitivity_scale_var)
         sens_scale.pack(fill="x", padx=12)
@@ -415,35 +414,42 @@ class MidiChordAnalyzer(tk.Tk):
         # Separator line
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
-        sens_frame = ttk.Frame(dialog)
-        sens_frame.pack(anchor="w", padx=12, pady=(10, 12))
-        ttk.Label(sens_frame, text="Note duration sensitivity: ").pack(side="left")
-        for level in ["Low", "Medium", "High"]:
-            ttk.Radiobutton(sens_frame, text=level, variable=sensitivity_var, value=level).pack(side="left", padx=6)
+        ttk.Label(dialog, text="Note detail (1=fewer details, 5=more details):").pack(anchor="w", padx=12, pady=(8, 0))
+        # Convert current sensitivity to slider position: Low=1, Medium=3, High=5
+        current_sensitivity = getattr(self, 'sensitivity', 'Medium')
+        sensitivity_to_pos = {"Low": 1, "Medium": 3, "High": 5}
+        detail_scale_var = tk.IntVar(value=sensitivity_to_pos.get(current_sensitivity, 3))
+        detail_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=detail_scale_var)
+        detail_scale.pack(fill="x", padx=12)
 
         def apply_settings():
             # Apply basic boolean/text settings
             self.include_triads = include_triads_var.get()
-            self.sensitivity = sensitivity_var.get()
             self.remove_repeats = remove_repeats_var.get()
             self.include_anacrusis = include_anacrusis_var.get()
             self.arpeggio_searching = arpeggio_searching_var.get()
             self.neighbour_notes_searching = neighbour_notes_var.get()
             self.include_non_drive_events = include_non_drive_var.get()
 
-            # Read slider position and persist it
+            # Read detail slider and convert to sensitivity
+            detail_pos = int(detail_scale_var.get())
+            pos_to_sensitivity = {1: "Low", 2: "Low", 3: "Medium", 4: "High", 5: "High"}
+            self.sensitivity = pos_to_sensitivity.get(detail_pos, "Medium")
+
+            # Read merge slider position and persist it
             pos = int(sensitivity_scale_var.get())
             self.collapse_sensitivity_pos = pos
             # Collapsing is always enabled
             self.collapse_similar_events = True
 
-            # Map slider position to merge parameter presets
+            # Map slider position to merge parameter presets (flipped behavior)
+            # GUI position 1 = low merging (old preset 5), GUI position 5 = high merging (old preset 1)
             presets = {
-                1: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},
-                2: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},
-                3: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},
-                4: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},
-                5: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},
+                1: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},  # Low merging (strict)
+                2: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},  # 
+                3: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},  # Medium (unchanged)
+                4: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},  # 
+                5: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},  # High merging (loose)
             }
             chosen = presets.get(pos, presets[3])
             self.merge_jaccard_threshold = chosen["jaccard"]
