@@ -78,11 +78,11 @@ jobs:
             ls -la dist || true
           fi
 
-      - name: Upload artifact (.app zip)
+      - name: Upload artifact (.app bundle)
         uses: actions/upload-artifact@v4
         with:
           name: driveanalyzer-x86_64-app
-          path: driveanalyzer-x86_64.app.zip
+          path: dist/DriveAnalyzer.app
 
       - name: Upload build logs and diagnostics
         uses: actions/upload-artifact@v4
@@ -175,11 +175,11 @@ jobs:
             ls -la dist || true
           fi
 
-      - name: Upload artifact (.app zip)
+      - name: Upload artifact (.app bundle)
         uses: actions/upload-artifact@v4
         with:
           name: driveanalyzer-arm64-app
-          path: driveanalyzer-arm64.app.zip
+          path: dist/DriveAnalyzer.app
 
       - name: Upload build logs and diagnostics (arm64)
         uses: actions/upload-artifact@v4
@@ -251,11 +251,11 @@ jobs:
             Get-ChildItem dist
           }
 
-      - name: Upload artifact (exe zip)
+      - name: Upload artifact (exe)
         uses: actions/upload-artifact@v4
         with:
           name: driveanalyzer-windows-exe
-          path: driveanalyzer-windows.zip
+          path: dist/DriveAnalyzer.exe
 
       - name: Upload build logs and diagnostics (Windows)
         uses: actions/upload-artifact@v4
@@ -283,14 +283,9 @@ jobs:
         run: |
           mkdir -p mac_release
           
-          # Extract the Mac app bundles directly (no nested zips)
-          cd artifacts/driveanalyzer-x86_64-app
-          unzip -q driveanalyzer-x86_64.app.zip
-          mv DriveAnalyzer.app ../../mac_release/DriveAnalyzer_x86_64.app
-          cd ../driveanalyzer-arm64-app
-          unzip -q driveanalyzer-arm64.app.zip  
-          mv DriveAnalyzer.app ../../mac_release/DriveAnalyzer_arm64.app
-          cd ../..
+          # Copy the Mac app bundles directly (no extraction needed)
+          cp -r artifacts/driveanalyzer-x86_64-app/DriveAnalyzer.app mac_release/DriveAnalyzer_x86_64.app
+          cp -r artifacts/driveanalyzer-arm64-app/DriveAnalyzer.app mac_release/DriveAnalyzer_arm64.app
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml mac_release/
@@ -307,12 +302,8 @@ jobs:
         run: |
           mkdir -p windows_release
           
-          # Extract the Windows exe directly and ensure it's at root level
-          cd artifacts/driveanalyzer-windows-exe
-          unzip -j driveanalyzer-windows.zip -d ../../windows_release/
-          cd ../../windows_release
-          mv DriveAnalyzer.exe drive_analyzer.exe
-          cd ..
+          # Copy the exe directly (no extraction needed)
+          cp artifacts/driveanalyzer-windows-exe/DriveAnalyzer.exe windows_release/drive_analyzer.exe
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml windows_release/
