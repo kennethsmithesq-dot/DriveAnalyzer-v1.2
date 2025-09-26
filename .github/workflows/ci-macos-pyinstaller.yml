@@ -328,5 +328,5 @@ jobs:
       - name: Upload Windows release package
         uses: actions/upload-artifact@v4
         with:
-          name: drive-analyzer-v1-2-windows
+          name: drive-analyzer-v1-2
           path: drive_analyzer_v1_2.zip
