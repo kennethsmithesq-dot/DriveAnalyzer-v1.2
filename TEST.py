@@ -1423,21 +1423,6 @@ class MidiChordAnalyzer(tk.Tk):
                         "basses": basses,
                         "chord_info": chord_info
                     }
-            
-            # Debug final events for Bar 11
-            print("\n" + "=" * 60)
-            print(">>> REACHED FINAL EVENTS SECTION <<<")
-            print(">>> FINAL EVENTS FOR BAR 11 <<<")
-            print("=" * 60)
-            bar11_found = False
-            for key, data in analyzed_events.items():
-                if key[0] == 11:  # Bar 11
-                    bar11_found = True
-                    print(f">>> [FINAL EVENT] Bar {key[0]}.{key[1]} ({key[2]}): chords={list(data['chords'])}, notes={list(data['event_notes'])}, bass={list(data.get('basses', []))}")
-            if not bar11_found:
-                print(">>> [FINAL EVENT] No Bar 11 events found!")
-            print("=" * 60)
-            
             self.analyzed_events = analyzed_events
 
             self.display_results()
@@ -1449,7 +1434,7 @@ class MidiChordAnalyzer(tk.Tk):
             tk.messagebox.showinfo("Loaded", f"Analysis loaded from {file_path}")
         except Exception as e:
             tk.messagebox.showerror("Error", f"Failed to load analysis:\n{e}")
-            
+                        
 
     def get_deduplicated_events(self, events):
         """Apply the same deduplication logic used in display_results to any event dictionary."""
