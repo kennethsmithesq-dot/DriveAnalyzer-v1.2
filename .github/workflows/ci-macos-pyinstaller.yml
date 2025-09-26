@@ -57,8 +57,8 @@ jobs:
           source .venv_x86_64/bin/activate
           echo "== PYINSTALLER: APP BUNDLE BUILD ==" > build-app.log
           arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
-            --add-data assets/title.png:. \
-            --add-data assets/ico.png:. \
+            --add-data assets/title.png:assets \
+            --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
@@ -154,8 +154,8 @@ jobs:
           source .venv_arm64/bin/activate
           echo "== PYINSTALLER: ARM64 APP BUNDLE BUILD ==" > build-app-arm64.log
           python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
-            --add-data assets/title.png:. \
-            --add-data assets/ico.png:. \
+            --add-data assets/title.png:assets \
+            --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
@@ -228,8 +228,8 @@ jobs:
         run: |
           echo "== PYINSTALLER: WINDOWS EXE BUILD ==" > build-exe-windows.log
           python -m PyInstaller --onefile --windowed --name DriveAnalyzer TEST.py `
-            --add-data "assets/title.png;." `
-            --add-data "assets/ico.png;." `
+            --add-data "assets/title.png;assets" `
+            --add-data "assets/ico.png;assets" `
             --add-data "assets/fonts;assets/fonts" `
             --add-data "assets/images;assets/images" `
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido `
