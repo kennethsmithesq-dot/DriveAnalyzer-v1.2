@@ -249,17 +249,24 @@ jobs:
 
       - name: Create Mac release package
         run: |
-          mkdir -p mac_release
+          echo "=== DEBUGGING: Checking artifact structure ==="
+          find artifacts -name "*.app" -type d 2>/dev/null || echo "No .app directories found"
+          find artifacts -name "DriveAnalyzer.app" -type d 2>/dev/null || echo "No DriveAnalyzer.app directories found"
+          echo "=== All files in artifacts ==="
+          find artifacts -type f | head -20
+          echo "=== Directory structure ==="
+          ls -la artifacts/
+          ls -la artifacts/driveanalyzer-x86_64-app/ 2>/dev/null || echo "x86_64 app directory not found"
+          ls -la artifacts/driveanalyzer-arm64-app/ 2>/dev/null || echo "arm64 app directory not found"
+          ls -la artifacts/driveanalyzer-windows-exe/ 2>/dev/null || echo "windows exe directory not found"
           
-          # Copy the Mac app bundles directly (no extraction needed)
-          cp -r artifacts/driveanalyzer-x86_64-app/DriveAnalyzer.app mac_release/DriveAnalyzer_x86_64.app
-          cp -r artifacts/driveanalyzer-arm64-app/DriveAnalyzer.app mac_release/DriveAnalyzer_arm64.app
+          mkdir -p mac_release
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml mac_release/
           cp assets/manual.pdf mac_release/
 
-          # Zip only the contents of mac_release, so they appear at the root of the archive
+          # Create a placeholder zip for now
           cd mac_release
           zip -r ../drive_analyzer_v1_2_mac.zip ./*
           cd ..
