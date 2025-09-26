@@ -283,9 +283,14 @@ jobs:
         run: |
           mkdir -p mac_release
           
-          # Copy the Mac app zips directly (no extraction - let user extract them)
-          cp artifacts/driveanalyzer-x86_64-app/driveanalyzer-x86_64.app.zip mac_release/drive_analyzer_x86_64.app.zip
-          cp artifacts/driveanalyzer-arm64-app/driveanalyzer-arm64.app.zip mac_release/drive_analyzer_arm64.app.zip
+          # Extract the Mac app bundles directly (no nested zips)
+          cd artifacts/driveanalyzer-x86_64-app
+          unzip -q driveanalyzer-x86_64.app.zip
+          mv DriveAnalyzer.app ../../mac_release/DriveAnalyzer_x86_64.app
+          cd ../driveanalyzer-arm64-app
+          unzip -q driveanalyzer-arm64.app.zip  
+          mv DriveAnalyzer.app ../../mac_release/DriveAnalyzer_arm64.app
+          cd ../..
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml mac_release/
@@ -302,11 +307,12 @@ jobs:
         run: |
           mkdir -p windows_release
           
-          # Extract and rename the Windows exe (fix name to remove "-windows")
+          # Extract the Windows exe directly and ensure it's at root level
           cd artifacts/driveanalyzer-windows-exe
-          unzip -q driveanalyzer-windows.zip
-          mv DriveAnalyzer.exe ../../windows_release/drive_analyzer.exe
-          cd ../..
+          unzip -j driveanalyzer-windows.zip -d ../../windows_release/
+          cd ../../windows_release
+          mv DriveAnalyzer.exe drive_analyzer.exe
+          cd ..
           
           # Copy sample XML files and manual
           cp -r assets/sample_xml windows_release/
@@ -328,5 +334,5 @@ jobs:
       - name: Upload Windows release package
         uses: actions/upload-artifact@v4
         with:
-          name: drive-analyzer-v1-2
+          name: drive-analyzer-v1-2               
           path: drive_analyzer_v1_2.zip
