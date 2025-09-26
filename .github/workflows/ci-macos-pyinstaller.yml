@@ -67,17 +67,6 @@ jobs:
           fi
           cp build-app.log build-app-x86_64.log || true
 
-      - name: Package artifact (zip .app)
-        run: |
-          set -eux
-          if [ -d dist/DriveAnalyzer.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-x86_64.app.zip
-            ls -la driveanalyzer-x86_64.app.zip
-          else
-            echo "Warning: .app bundle not found"
-            ls -la dist || true
-          fi
-
       - name: Upload artifact (.app bundle)
         uses: actions/upload-artifact@v4
         with:
@@ -164,17 +153,6 @@ jobs:
           fi
           cp build-app-arm64.log build-app-arm64.log || true
 
-      - name: Package artifact (zip .app)
-        run: |
-          set -eux
-          if [ -d dist/DriveAnalyzer.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-arm64.app.zip
-            ls -la driveanalyzer-arm64.app.zip
-          else
-            echo "Warning: .app bundle not found"
-            ls -la dist || true
-          fi
-
       - name: Upload artifact (.app bundle)
         uses: actions/upload-artifact@v4
         with:
@@ -238,16 +216,6 @@ jobs:
             Write-Output "Build successful - DriveAnalyzer.exe created"
           } else {
             Write-Output "Warning: .exe not found"
-            Get-ChildItem dist
-          }
-
-      - name: Package artifact (zip exe)
-        run: |
-          if (Test-Path dist/DriveAnalyzer.exe) {
-            Compress-Archive -Path dist/DriveAnalyzer.exe -DestinationPath driveanalyzer-windows.zip
-            Get-ChildItem driveanalyzer-windows.zip
-          } else {
-            Write-Output "Warning: .exe not found for packaging"
             Get-ChildItem dist
           }
 
@@ -325,5 +293,5 @@ jobs:
       - name: Upload Windows release package
         uses: actions/upload-artifact@v4
         with:
-          name: drive-analyzer-v1-2               
+          name: drive-analyzer-v1-2
           path: drive_analyzer_v1_2.zip
