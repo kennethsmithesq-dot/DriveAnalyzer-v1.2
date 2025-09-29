@@ -2061,7 +2061,6 @@ class GridWindow(tk.Toplevel):#
             text="Show Resolution Patterns",
             variable=self.show_resolutions_var,
             command=self.redraw,
-            style="GridWindow.TCheckbutton"
         ).pack(side="left", padx=5)
 
         self.color_pdf_var = tk.BooleanVar(value=True)
