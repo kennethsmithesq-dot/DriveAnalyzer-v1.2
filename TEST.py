@@ -1,24 +1,18 @@
+import os
+import platform
+import sys
+import threading
+from typing import Callable, Dict, List, Optional, Tuple, Any, Set
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, Text, BooleanVar, Frame, Label
-import platform
 import tkinter.font as tkfont
+
 from PIL import Image, ImageDraw, ImageTk
-import mido
-import sys
-import os
-from math import log2
-import threading
-from collections import Counter
-from typing import Callable, Dict, List, Optional, Tuple, Any, Set
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.lib.colors import black, HexColor
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from music21 import converter, note, chord as m21chord, meter, stream
-import subprocess
-import sys
-import os
 
 
 def resource_path(relative_path: str) -> str:
@@ -103,7 +97,7 @@ class LoadOptionsDialog(tk.Toplevel):
         self.build_ui()
 # ...existing code...
     def build_ui(self):
-        frame = tk.Frame(self, bg="#2b2b2b")
+        frame = tk.Frame(self, bg="black")
         frame.pack(padx=10, pady=10, fill="x")
 
         ttk.Checkbutton(
@@ -112,7 +106,7 @@ class LoadOptionsDialog(tk.Toplevel):
         ).pack(anchor="w", pady=5)
 
         ttk.Label(
-            frame, text="Sensitivity level:", background="#2b2b2b", foreground="white"
+            frame, text="Sensitivity level:", background="black", foreground="white"
         ).pack(anchor="w", pady=(10, 0))
         for level in ["High", "Medium", "Low"]:
             ttk.Radiobutton(
@@ -143,8 +137,16 @@ class MidiChordAnalyzer(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("🎵 MIDI Drive Analyzer")
-        self.geometry("650x600")
-        self.configure(bg="#2b2b2b")
+        self.geometry("650x850")
+        self.configure(bg="black")
+
+        # Configure ttk styles for black theme
+        from tkinter import ttk
+        style = ttk.Style()
+        style.configure("White.TCheckbutton", background="black", foreground="white", focuscolor="black")
+        style.configure("White.TRadiobutton", background="black", foreground="white", focuscolor="black")
+        style.configure("White.TLabel", background="black", foreground="white")
+        style.configure("TFrame", background="black")
 
         # Analysis options (defaults)
         self.include_triads = True
@@ -186,7 +188,7 @@ class MidiChordAnalyzer(tk.Tk):
         is_mac = platform.system() == "Darwin"
         # Add extra top padding for macOS
         top_pad = 30 if is_mac else 10
-        frame = Frame(self, bg="#2b2b2b")
+        frame = Frame(self, bg="black")
         frame.pack(pady=(top_pad, 10))
 
         # Button style logic
@@ -246,8 +248,12 @@ class MidiChordAnalyzer(tk.Tk):
         self.load_analysis_btn.pack(side="left", padx=5)
 
         self.result_text = Text(
-            self, bg="#1e1e1e", fg="white", font=("Consolas", 11),
-            wrap="word", borderwidth=0
+            self, bg="black", fg="white", font=("Consolas", 11),
+            wrap="word", borderwidth=0, highlightthickness=0,
+            selectbackground="black", selectforeground="white",
+            insertbackground="white", relief="flat", padx=0, pady=0,
+            insertborderwidth=0, insertwidth=0, 
+            highlightbackground="black", highlightcolor="black"
         )
         self.result_text.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -280,36 +286,23 @@ class MidiChordAnalyzer(tk.Tk):
 
     def show_splash(self):
         self.result_text.delete("1.0", "end")
+        # Configure text spacing to eliminate gray stripes
+        self.result_text.configure(spacing1=0, spacing2=0, spacing3=0)
         # Insert the title.png image centered
         try:
             from PIL import Image, ImageTk
             img_path = resource_path(os.path.join("assets", "title.png"))
             title_img = Image.open(img_path)
             title_photo = ImageTk.PhotoImage(title_img)
-            title_label = tk.Label(self.result_text, image=title_photo, bd=0)
+            title_label = tk.Label(self.result_text, image=title_photo, bd=0, bg="black", highlightthickness=0)
             title_label.image = title_photo  # Keep a reference!
-            text_width_chars = int(self.result_text['width'])
-            img_width_chars = max(int(title_photo.width() / 8), 1)
-            padding = max((text_width_chars - img_width_chars) // 2, 0)
-            self.result_text.insert("end", " " * padding)
-            self.result_text.window_create("end", window=title_label)
-            self.result_text.insert("end", "\n\n")
+            self.result_text.window_create("1.0", window=title_label)
+            self.result_text.insert("end", "\n")
         except Exception as e:
-            self.result_text.insert("end", "Harmonic Drive Analyzer\n\n")
+            self.result_text.insert("end", "Harmonic Drive Analyzer\n")
             print("Splash image load error:", e)
-        # Now insert the piano image as before
-        piano_img = self.create_piano_image(octaves=2)
-        self.tk_piano_img = ImageTk.PhotoImage(piano_img)
-        label = tk.Label(self.result_text, image=self.tk_piano_img, bd=0)
-        label.image = self.tk_piano_img
-        text_width_chars = int(self.result_text['width'])
-        img_width_chars = max(int(self.tk_piano_img.width() / 8), 1)
-        padding = max((text_width_chars - img_width_chars) // 2, 0)
-        self.result_text.insert("end", " " * padding)
-        self.result_text.window_create("end", window=label)
-        self.result_text.insert("end", "\n\n")
         description = (
-            "• Analyze MIDI / MusicXML files\n"
+            "• Analyze MusicXML scores\n"
             "• Model patterns of harmonic tension\n"
             "• Produce PDF graph of tension-release patterns\n"
             "• Model harmonic entropy\n\n"
@@ -323,7 +316,7 @@ class MidiChordAnalyzer(tk.Tk):
        
     def preview_entropy(self, mode: str = "chord", base: int = 2):
         if not self.analyzed_events:
-            print("[Phase7] No analyzed events yet.")
+            print("No analyzed events available for entropy preview.")
             return
         ea = EntropyAnalyzer(self.analyzed_events, symbol_mode=mode, base=base, logger=print)
         ea.register_step("Stage 1: Strength listing", lambda EA: EA.step_stage1_strengths(print_legend=False))
@@ -351,8 +344,6 @@ class MidiChordAnalyzer(tk.Tk):
             self.analyzed_events = events
 
             self.display_results()
-            # Show entropy grid/log with legend after analysis
-            print("\nENTROPY ANALYSIS\n")
             # --- Generate entropy review text and store it ---
             from io import StringIO
             entropy_buf = StringIO()
@@ -598,11 +589,11 @@ class MidiChordAnalyzer(tk.Tk):
 
 
     def analyze_musicxml(self, score, min_duration=0.5):
-        flat_notes = list(score.flat.getElementsByClass([note.Note, m21chord.Chord]))
+        flat_notes = list(score.flatten().getElementsByClass([note.Note, m21chord.Chord]))
 
         # Collect time signatures using the flattened score so offsets are absolute
         time_signatures = []
-        for ts in score.flat.getElementsByClass(meter.TimeSignature):
+        for ts in score.flatten().getElementsByClass(meter.TimeSignature):
             # ts.offset on a flat stream is the absolute offset in quarter lengths
             offset = float(ts.offset)
             time_signatures.append((offset, int(ts.numerator), int(ts.denominator)))
@@ -848,31 +839,18 @@ class MidiChordAnalyzer(tk.Tk):
                                 inter = window_pcs & block_pcs
                                 jaccard = (len(inter) / len(union)) if union else 0.0
                                 
-                                # DEBUG: Show F arpeggio analysis
-                                if any('F' in str(chord) for chord in chords):
-                                    print(f"F-ARPEGGIO DEBUG at Bar {bar}, Beat {beat}:")
-                                    print(f"  Window PCs: {window_pcs}, Block PCs: {block_pcs}")
-                                    print(f"  Union: {union}, Intersection: {inter}")
-                                    print(f"  Jaccard similarity: {jaccard:.3f} (threshold: {getattr(self, 'arpeggio_block_similarity_threshold', 0.5)})")
-                                
                                 # Accept arpeggio if Jaccard passes OR if the detected arpeggio chord's root is present in the simultaneous block_pcs
                                 accept_arpeggio = False
                                 if jaccard >= getattr(self, 'arpeggio_block_similarity_threshold', 0.5):
                                     accept_arpeggio = True
-                                    if any('F' in str(chord) for chord in chords):
-                                        print(f"  → ACCEPTED via Jaccard similarity")
                                 else:
                                     # check whether any detected chord root is present in block_pcs
                                     for chord_name in chords:
                                         root = next((n for n in sorted(NOTE_TO_SEMITONE.keys(), key=lambda x: -len(x)) if chord_name.startswith(n)), None)
                                         if root is not None and (NOTE_TO_SEMITONE.get(root) % 12) in block_pcs:
                                             accept_arpeggio = True
-                                            if any('F' in str(chord) for chord in chords):
-                                                print(f"  → ACCEPTED via root presence: {root} (PC {NOTE_TO_SEMITONE.get(root) % 12}) in block")
                                             break
                                 if not accept_arpeggio:
-                                    if any('F' in str(chord) for chord in chords):
-                                        print(f"  → REJECTED: Failed both Jaccard and root presence checks")
                                     continue
                             # Accept arpeggio event
                             if key not in events:
@@ -985,14 +963,11 @@ class MidiChordAnalyzer(tk.Tk):
                                     completion_bar, completion_beat, completion_ts = offset_to_bar_beat(completion_time)
                                     completion_key = (completion_bar, completion_beat, completion_ts)
                                     
-                                    print(f"[BIND DEBUG] Foundation: {foundation_key}, Completion: {completion_key}")
-                                    
                                     # Plan to bind completion event into foundation event
                                     if foundation_key not in events_to_bind:
                                         events_to_bind[foundation_key] = []
                                     if completion_key != foundation_key:
                                         events_to_bind[foundation_key].append(completion_key)
-                                        print(f"[BIND DEBUG] Planned to bind {completion_key} into {foundation_key}")
                                     
                                     # Enhance the foundation event with the discovered chords
                                     if foundation_key not in events:
@@ -1001,18 +976,10 @@ class MidiChordAnalyzer(tk.Tk):
                                     events[foundation_key]["event_notes"].update(final_test_pcs)
             
             # Execute the binding: merge later events into foundation events
-            print(f"[BIND DEBUG] Events to bind: {events_to_bind}")
             for foundation_key, completion_keys in events_to_bind.items():
                 if foundation_key in events:
-                    print(f"[BIND DEBUG] Processing foundation {foundation_key}")
                     for completion_key in completion_keys:
                         if completion_key in events:
-                            print(f"[BIND DEBUG] Found completion event {completion_key} to merge")
-                            
-                            # DEBUG: Track Bar 11 binding specifically
-                            if foundation_key[0] == 11 or completion_key[0] == 11:
-                                print(f"[BAR 11 BIND] Merging {completion_key} chords={list(events[completion_key].get('chords', []))} INTO {foundation_key} chords={list(events[foundation_key].get('chords', []))}")
-                            
                             # Merge the completion event into the foundation event
                             completion_event = events[completion_key]
                             events[foundation_key]["chords"].update(completion_event.get("chords", set()))
@@ -1022,18 +989,6 @@ class MidiChordAnalyzer(tk.Tk):
                             
                             # Remove the completion event since it's now merged
                             del events[completion_key]
-                            print(f"[BIND DEBUG] Merged {completion_key} into {foundation_key}")
-                            
-                            # DEBUG: Show result for Bar 11
-                            if foundation_key[0] == 11:
-                                print(f"[BAR 11 BIND RESULT] {foundation_key} now has chords={list(events[foundation_key].get('chords', []))}")
-                        else:
-                            print(f"[BIND DEBUG] Completion event {completion_key} not found in events")
-                else:
-                    print(f"[BIND DEBUG] Foundation event {foundation_key} not found in events")
-
-        print(f"[DEBUG] Number of events built: {len(events)}")
-        print(f"[DEBUG] Event keys: {list(events.keys())}")
         if not events:
             return ["No matching chords found."], {}
 
@@ -1104,16 +1059,7 @@ class MidiChordAnalyzer(tk.Tk):
           similarity and merges chords choosing the strongest-priority chord per root.
         """
         
-        # DEBUG: Check if A7noroot exists in raw events AND track Beat 2 processing
-        for key, event_data in events.items():
-            bar, beat, ts = key
-            if bar == 11:
-                if beat == 2:
-                    print(f"[DEBUG PROCESS] Raw Bar 11 Beat 2 event: {event_data}")
-                elif beat == 3:
-                    print(f"[DEBUG PROCESS] Raw Bar 11 Beat 3 event: {event_data}")
-                if any('A7noroot' in chord for chord in event_data.get('chords', [])):
-                    print(f"[DEBUG PROCESS] A7noroot found in raw events at Bar {bar}, Beat {beat}: {event_data}")
+
 
         def chord_priority(chord_name: str) -> int:
             base = chord_name
@@ -1423,9 +1369,20 @@ class MidiChordAnalyzer(tk.Tk):
                         "basses": basses,
                         "chord_info": chord_info
                     }
+            
+
+            
             self.analyzed_events = analyzed_events
 
             self.display_results()
+            
+            # Generate entropy analysis for loaded data (same as in run_analysis)
+            from io import StringIO
+            entropy_buf = StringIO()
+            analyzer = EntropyAnalyzer(self.analyzed_events, logger=lambda x: print(x, file=entropy_buf))
+            analyzer.step_stage1_strengths(print_legend=True)
+            self.entropy_review_text = entropy_buf.getvalue()
+            
             self.show_grid_btn.config(state="normal")
             try:
                 self.save_analysis_btn.config(state="normal")
@@ -1434,7 +1391,7 @@ class MidiChordAnalyzer(tk.Tk):
             tk.messagebox.showinfo("Loaded", f"Analysis loaded from {file_path}")
         except Exception as e:
             tk.messagebox.showerror("Error", f"Failed to load analysis:\n{e}")
-                        
+            
 
     def get_deduplicated_events(self, events):
         """Apply the same deduplication logic used in display_results to any event dictionary."""
@@ -1656,46 +1613,25 @@ class EmbeddedMidiKeyboard:
         controls_frame = tk.Frame(self.parent, bg="black")
         controls_frame.pack(pady=10)
 
-        # Checkbox with a clear visual indicator (green = ON, gray = OFF)
-        chk_frame = tk.Frame(controls_frame, bg="black")
-        chk_frame.pack(side="left", padx=10)
-
-        self.checkbox = tk.Checkbutton(
-            chk_frame, text="Include triads", variable=self.include_triads_var,
-            font=("Segoe UI", 11), fg="white", bg="black", selectcolor="#ffd6ff",
-            activebackground="black", activeforeground="white",
-            bd=0, highlightthickness=0, anchor="w",
-            command=self.analyze_chord  # refresh analysis when toggled
+        # Clean toggle button for triads
+        def toggle_triads():
+            self.include_triads_var.set(not self.include_triads_var.get())
+            self.analyze_chord()  # refresh analysis when toggled
+            update_button_style()
+        
+        def update_button_style():
+            if self.include_triads_var.get():
+                self.triads_btn.config(text="Include triads: ON", bg="#00aa44", fg="white", activebackground="#00cc55")
+            else:
+                self.triads_btn.config(text="Include triads: OFF", bg="#666666", fg="white", activebackground="#777777")
+        
+        self.triads_btn = tk.Button(
+            controls_frame, text="Include triads: ON" if self.include_triads_var.get() else "Include triads: OFF",
+            font=("Segoe UI", 10, "bold"), relief="flat", bd=1,
+            command=toggle_triads, cursor="hand2"
         )
-        self.checkbox.pack(side="left")
-
-        # Small colored square indicator to show ON/OFF clearly (works across themes)
-        self._triad_indicator = tk.Canvas(chk_frame, width=16, height=16, bg="black", highlightthickness=0)
-        self._indicator_rect = self._triad_indicator.create_rectangle(
-            2, 2, 14, 14,
-            fill="#00cc66" if self.include_triads_var.get() else "#444444",
-            outline=""
-        )
-        self._triad_indicator.pack(side="left", padx=(6,0), pady=2)
-
-        def _update_triads_indicator(*args):
-            state = self.include_triads_var.get()
-            color = "#00cc66" if state else "#444444"
-            try:
-                self._triad_indicator.itemconfig(self._indicator_rect, fill=color)
-            except Exception:
-                # Fallback: recreate rectangle if needed
-                try:
-                    self._triad_indicator.delete("all")
-                except Exception:
-                    pass
-                self._indicator_rect = self._triad_indicator.create_rectangle(2, 2, 14, 14, fill=color, outline="")
-
-        # Attach variable trace (compatible with older tkinter versions)
-        try:
-            self.include_triads_var.trace_add("write", _update_triads_indicator)
-        except Exception:
-            self.include_triads_var.trace("w", lambda *a: _update_triads_indicator())
+        self.triads_btn.pack(side="left", padx=10, pady=2)
+        update_button_style()
 
         self.clear_button = tk.Button(
             controls_frame, text="Clear", font=("Segoe UI", 11, "bold"),
@@ -1981,23 +1917,21 @@ class GridWindow(tk.Toplevel):#
     CELL_SIZE = 50
     PADDING = 40
 
-    # For on-screen (Tkinter)
-    CHORD_TYPE_COLORS_TK = {
-        "maj": "#FFFFFF",
-        "min": "#FFFFFF",
-        "7": "#666666",
-        "dim": "#CCCCCC",
-        "aug": "#CCCCCC",
-        "maj7": "#FFFFFF",
-        "m7": "#AAAAAA",
-        "ø7": "#AAAAAA",
-        "no": "#CCCCCC",          # ← new
-        "other": "#FFFFFF",
+    # For on-screen (Tkinter) - System B: More subtle gradations
+    STRENGTH_COLORS_TK = {
+        "60+": "#000000",      # Black - strongest chords
+        "50-59": "#2A2A2A",    # Very dark grey
+        "40-49": "#444444",    # Dark grey
+        "30-39": "#666666",    # Medium-dark grey
+        "25-29": "#888888",    # Medium grey
+        "20-24": "#AAAAAA",    # Medium-light grey
+        "15-19": "#CCCCCC",    # Light grey
+        "0-14": "#EEEEEE",     # Very light grey (not pure white)
     }
 
-    # For PDF (ReportLab)
-    CHORD_TYPE_COLORS_PDF = {
-        k: HexColor(v) for k, v in CHORD_TYPE_COLORS_TK.items()
+    # For PDF (ReportLab) - System B: More subtle gradations
+    STRENGTH_COLORS_PDF = {
+        k: HexColor(v) for k, v in STRENGTH_COLORS_TK.items()
     }
 
     def _dedupe_for_grid(self, raw_events: Dict[Tuple[int, int, str], Dict[str, Any]]) -> Dict[Tuple[int, int, str], Dict[str, Any]]:
@@ -2071,6 +2005,13 @@ class GridWindow(tk.Toplevel):#
         super().__init__(parent)
         self.title("Chord Grid Visualization")
         self.configure(bg="white")
+        
+        # Configure white theme for GridWindow ttk widgets
+        from tkinter import ttk
+        style = ttk.Style()
+        style.configure("GridWindow.TFrame", background="white")
+        style.configure("GridWindow.TCheckbutton", background="white", foreground="black")
+        style.configure("GridWindow.TButton", background="white", foreground="black")
 
         self.parent = parent
         # Apply same filtering as main window (respect include_non_drive_events)
@@ -2078,15 +2019,7 @@ class GridWindow(tk.Toplevel):#
         if hasattr(parent, 'include_non_drive_events') and not parent.include_non_drive_events:
             raw_events = {k: v for k, v in raw_events.items() if v.get('chords') and len(v['chords']) > 0}
 
-        # DEBUG: Show Bar 11 events being sent to grid
-        print("\n" + "=" * 80)
-        print(">>> GRID WINDOW: BAR 11 EVENTS <<<")
-        print("=" * 80)
-        for key, value in raw_events.items():
-            bar, beat, ts = key
-            if bar == 11:
-                print(f">>> [GRID INPUT] Bar {bar}.{beat} ({ts}): chords={list(value.get('chords', []))}, notes={list(value.get('event_notes', []))}")
-        print("=" * 80)
+
 
         # Events are already fully processed by the parent - use them directly
         self.events = raw_events
@@ -2100,7 +2033,7 @@ class GridWindow(tk.Toplevel):#
         canvas_height = self.PADDING * 2 + len(self.root_list) * self.CELL_SIZE
 
         # --- Controls frame ---
-        controls_frame = ttk.Frame(self)
+        controls_frame = ttk.Frame(self, style="GridWindow.TFrame")
         controls_frame.pack(side="top", fill="x", pady=5)
 
         # Create all controls and pack them in a row
@@ -2109,7 +2042,8 @@ class GridWindow(tk.Toplevel):#
             controls_frame,
             text="Show Resolution Patterns",
             variable=self.show_resolutions_var,
-            command=self.redraw
+            command=self.redraw,
+            style="GridWindow.TCheckbutton"
         ).pack(side="left", padx=5)
 
         self.color_pdf_var = tk.BooleanVar(value=True)
@@ -2140,7 +2074,7 @@ class GridWindow(tk.Toplevel):#
         controls_frame.pack_configure(anchor="center")
 
         # --- Canvas container below controls ---
-        container = ttk.Frame(self)
+        container = ttk.Frame(self, style="GridWindow.TFrame")
         container.pack(fill="both", expand=True)
 
         # Left (frozen) column canvas for root labels (wider to fit enharmonic alternatives)
@@ -2149,7 +2083,7 @@ class GridWindow(tk.Toplevel):#
         self.left_canvas.pack(side="left", fill="y")
 
         # Right scrollable area for the grid
-        right_frame = ttk.Frame(container)
+        right_frame = ttk.Frame(container, style="GridWindow.TFrame")
         right_frame.pack(side="left", fill="both", expand=True)
 
         # Canvas with dynamic width (wide for many columns), fixed height
@@ -2203,7 +2137,7 @@ class GridWindow(tk.Toplevel):#
             except Exception as e:
                 # Fallback to text if image loading fails
                 print(f"[WARNING] Failed to load image {image_number}.png: {e}")
-                print(f"[DEBUG] Attempted path: {resource_path(os.path.join('assets', 'images', f'{image_number}.png'))}")
+
                 try:
                     # Simple fallback text
                     fallback_text = root.replace('b', '♭').replace('#', '♯')
@@ -2222,14 +2156,37 @@ class GridWindow(tk.Toplevel):#
     # Inside GridWindow
 
     def show_entropy_info_window(self, entropy_text):
+        import platform
         info_win = tk.Toplevel(self)
         info_win.title("Entropy Review")
         info_win.configure(bg="white")
-        info_win.geometry("1000x400")
-        text_widget = tk.Text(info_win, wrap="word", bg="white", fg="black", font=("Consolas", 11))
+        
+        # Use platform-appropriate monospace fonts for better column alignment
+        if platform.system() == "Darwin":  # Mac
+            mono_font = ("Monaco", 10)
+        elif platform.system() == "Windows":
+            mono_font = ("Consolas", 10)
+        else:  # Linux
+            mono_font = ("DejaVu Sans Mono", 10)
+            
+        # Create scrollable text frame
+        text_frame = tk.Frame(info_win, bg="white")
+        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        text_widget = tk.Text(text_frame, wrap="none", bg="white", fg="black", font=mono_font)
+        
+        # Add scrollbars
+        v_scroll = tk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        h_scroll = tk.Scrollbar(text_frame, orient="horizontal", command=text_widget.xview)
+        text_widget.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        
+        # Pack scrollbars and text widget
+        v_scroll.pack(side="right", fill="y")
+        h_scroll.pack(side="bottom", fill="x")
+        text_widget.pack(side="left", fill="both", expand=True)
+        
         text_widget.insert("1.0", entropy_text)
         text_widget.config(state="disabled")
-        text_widget.pack(fill="both", expand=True, padx=10, pady=10)
         def save_entropy_info():
             from tkinter import filedialog
             path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")], title="Save Entropy Info")
@@ -2356,6 +2313,7 @@ class GridWindow(tk.Toplevel):#
 
 
     def classify_chord_type(self, chord):
+        """Classify chord type for shape determination (kept for triangle/circle shapes)."""
         chord = chord.replace("♭", "b").replace("♯", "#")
         if "no" in chord.lower():
             return "no"
@@ -2382,6 +2340,64 @@ class GridWindow(tk.Toplevel):#
             return "aug"
         else:
             return "other"
+
+    def get_chord_strength_category(self, chord, event_key):
+        """Calculate chord strength percentage and return color category."""
+        # Get the event data
+        event_data = self.events.get(event_key, {})
+        
+        # Calculate chord strength using entropy analyzer
+        analyzer = EntropyAnalyzer({event_key: event_data}, base=2, logger=lambda x: None)
+        
+        # Get all chord strengths for this event to calculate probabilities
+        chords = event_data.get("chords", [])
+        basses = event_data.get("basses", [])
+        
+        if not chords:
+            return "0-29"  # No chords means white
+        
+        # Calculate scores for all chords in this event
+        chord_scores = []
+        for c in chords:
+            score, _ = analyzer._compute_score(c, basses, event_data)
+            chord_scores.append((c, score))
+        
+        # Find the score for our specific chord
+        target_score = None
+        for c, score in chord_scores:
+            if c == chord:
+                target_score = score
+                break
+        
+        if target_score is None:
+            return "0-29"
+        
+        # Calculate total score for probability calculation
+        total_score = sum(score for _, score in chord_scores)
+        
+        if total_score == 0:
+            return "0-29"
+        
+        # Calculate probability percentage
+        probability = (target_score / total_score) * 100
+        
+        # Return color category based on probability ranges (System B - 8 categories)
+        if probability >= 60:
+            return "60+"
+        elif probability >= 50:
+            return "50-59"
+        elif probability >= 40:
+            return "40-49"
+        elif probability >= 30:
+            return "30-39"
+        elif probability >= 25:
+            return "25-29"
+        elif probability >= 20:
+            return "20-24"
+        elif probability >= 15:
+            return "15-19"
+        else:
+            return "0-14"
 
     def export_pdf(self):
         use_color = self.color_pdf_var.get()
@@ -2493,6 +2509,71 @@ class GridWindow(tk.Toplevel):#
                     c.setStrokeColor(HexColor("#dddddd"))
                     c.line(x_line, height - margin_y, x_line, height - (margin_y + grid_rows * cell_size))
 
+                # Optional resolution arrows (drawn after grid lines but before chord shapes)
+                if self.show_resolutions_var.get():
+                    pos_dict = {}
+                    for col_idx, event_key in enumerate(visible_events):
+                        event_data = self.events[event_key]
+                        chords_by_root = {}
+                        for chord in event_data.get("chords", []):
+                            root = self.get_root(chord)
+                            chords_by_root[root] = chord
+                        for root, chord in chords_by_root.items():
+                            if root not in self.root_to_row:
+                                continue
+                            row = self.root_to_row[root]
+                            x = margin_left + col_idx * cell_size + cell_size / 2
+                            y = height - (margin_y + row * cell_size + cell_size / 2)
+                            pos_dict[(col_idx, row)] = (x, y, chord)
+
+                    # Arrows start from grid center and appear behind chord shapes
+                    end_offset = cell_size * 0.75  # Stop at upper-left area of target square
+                    for (col, row), (x1, y1, chord1) in pos_dict.items():
+                        diag_pos = (col + 1, row + 1)
+                        if diag_pos in pos_dict:
+                            x2, y2, chord2 = pos_dict[diag_pos]
+                            dx = x2 - x1
+                            dy = y2 - y1
+                            dist = (dx**2 + dy**2) ** 0.5
+                            if dist == 0:
+                                continue
+                            dx_norm = dx / dist
+                            dy_norm = dy / dist
+                            # Start from grid center (not circle edge)
+                            start_x = x1
+                            start_y = y1
+                            end_x = x2 - dx_norm * end_offset
+                            end_y = y2 - dy_norm * end_offset
+                            
+                            # Draw arrow line
+                            c.setStrokeColor(black)
+                            c.setLineWidth(1.5)
+                            c.setLineCap(1)
+                            c.line(start_x, start_y, end_x, end_y)
+                            
+                            # Draw arrowhead
+                            arrow_size = 5
+                            angle = math.atan2(dy_norm, dx_norm)
+                            left_angle = angle + math.pi / 6
+                            right_angle = angle - math.pi / 6
+                            
+                            tip_x = end_x
+                            tip_y = end_y
+                            left_x = tip_x - arrow_size * math.cos(left_angle)
+                            left_y = tip_y - arrow_size * math.sin(left_angle)
+                            right_x = tip_x - arrow_size * math.cos(right_angle)
+                            right_y = tip_y - arrow_size * math.sin(right_angle)
+                            
+                            c.setFillColor(black)
+                            c.setStrokeColor(black)
+                            c.setLineWidth(0.5)
+                            path = c.beginPath()
+                            path.moveTo(tip_x, tip_y)
+                            path.lineTo(left_x, left_y)
+                            path.lineTo(right_x, right_y)
+                            path.close()
+                            c.drawPath(path, stroke=1, fill=1)
+
                 # Chords
                 for col_idx, event_key in enumerate(visible_events):
                     event_data = self.events[event_key]
@@ -2509,7 +2590,8 @@ class GridWindow(tk.Toplevel):#
                         y = height - (margin_y + row * cell_size + cell_size / 2)
 
                         chord_type = self.classify_chord_type(chord)
-                        fill_color = self.CHORD_TYPE_COLORS_PDF.get(chord_type, HexColor("#CCCCCC")) if use_color else HexColor("#FFFFFF")
+                        strength_category = self.get_chord_strength_category(chord, event_key)
+                        fill_color = self.STRENGTH_COLORS_PDF.get(strength_category, HexColor("#CCCCCC")) if use_color else HexColor("#FFFFFF")
                         c.setFillColor(fill_color)
                         c.setStrokeColor(black)
 
@@ -2541,69 +2623,16 @@ class GridWindow(tk.Toplevel):#
                                     break
                             if not replaced:
                                 function_label = beautify_chord(function_label)
-                            text_color = HexColor("#FFFFFF") if chord_type == "7" else HexColor("#000000")
+                            # Use white text on dark backgrounds, black text on light backgrounds
+                            # For System B: white text on the darkest 4 categories, black text on the lighter 4
+                            text_color = HexColor("#FFFFFF") if strength_category in ["60+", "50-59", "40-49", "30-39"] else HexColor("#000000")
                             c.setFillColor(text_color)
                             c.setFont("DejaVuSans", 8)
                             c.drawCentredString(x, y - 4, function_label)
 
-                # Bass dots
-                for col_idx, event_key in enumerate(visible_events):
-                    event_data = self.events[event_key]
-                    for bass in event_data.get("basses", []):
-                        bass_root = self.get_root(bass)
-                        if bass_root not in self.root_to_row:
-                            continue
-                        brow = self.root_to_row[bass_root]
-                        bx = margin_left + col_idx * cell_size + cell_size / 2
-                        by = height - (margin_y + brow * cell_size + cell_size / 2)
-                        dot_radius = 2.5
-                        c.setFillColor(black)
-                        c.circle(bx, by - radius + dot_radius, dot_radius, fill=1, stroke=0)
 
-                # Optional resolution arrows
-                if self.show_resolutions_var.get():
-                    pos_dict = {}
-                    for col_idx, event_key in enumerate(visible_events):
-                        event_data = self.events[event_key]
-                        chords_by_root = {}
-                        for chord in event_data.get("chords", []):
-                            root = self.get_root(chord)
-                            chords_by_root[root] = chord
-                        for root, chord in chords_by_root.items():
-                            if root not in self.root_to_row:
-                                continue
-                            row = self.root_to_row[root]
-                            x = margin_left + col_idx * cell_size + cell_size / 2
-                            y = height - (margin_y + row * cell_size + cell_size / 2)
-                            pos_dict[(col_idx, row)] = (x, y, chord)
 
-                    arrow_length = radius
-                    for (col, row), (x1, y1, chord1) in pos_dict.items():
-                        diag_pos = (col + 1, row + 1)
-                        if diag_pos in pos_dict:
-                            x2, y2, chord2 = pos_dict[diag_pos]
-                            dx, dy = x2 - x1, y2 - y1
-                            dist = (dx**2 + dy**2) ** 0.5
-                            if dist == 0:
-                                continue
-                            dx_norm, dy_norm = dx / dist, dy / dist
-                            start_x = x1 + dx_norm * arrow_length
-                            start_y = y1 + dy_norm * arrow_length
-                            end_x = x2 - dx_norm * arrow_length
-                            end_y = y2 - dy_norm * arrow_length
-                            c.setStrokeColor(black)
-                            c.setLineWidth(2)
-                            c.line(start_x, start_y, end_x, end_y)
-                            arrow_size = 6
-                            angle = math.atan2(dy, dx)
-                            left_angle = angle + math.pi / 6
-                            right_angle = angle - math.pi / 6
-                            left_x = end_x - arrow_size * math.cos(left_angle)
-                            left_y = end_y - arrow_size * math.sin(left_angle)
-                            right_x = end_x - arrow_size * math.cos(right_angle)
-                            right_y = end_y - arrow_size * math.sin(right_angle)
-                            c.line(end_x, end_y, left_x, left_y)
-                            c.line(end_x, end_y, right_x, right_y)
+
 
                 c.setStrokeColor(HexColor("#dddddd"))
                 c.setLineWidth(1)
@@ -2615,6 +2644,23 @@ class GridWindow(tk.Toplevel):#
                     stroke=1,
                     fill=0
                 )
+
+                # Draw bass dots AFTER grid lines to ensure they appear on top
+                for col_idx, event_key in enumerate(visible_events):
+                    event_data = self.events[event_key]
+                    for bass in event_data.get("basses", []):
+                        bass_root = self.get_root(bass)
+                        if bass_root not in self.root_to_row:
+                            continue
+                        brow = self.root_to_row[bass_root]
+                        bx = margin_left + col_idx * cell_size + cell_size / 2
+                        by = height - (margin_y + brow * cell_size + cell_size / 2)
+                        dot_radius = 2.5
+                        # Position dot at bottom of shape, outside the circle/triangle edge
+                        # PDF coordinates: Y increases upward, so subtract to go down
+                        dot_y_position = by - radius - dot_radius - 2  # 2 pixels clearance below shape
+                        c.setFillColor(black)
+                        c.circle(bx, dot_y_position, dot_radius, fill=1, stroke=0)
 
                 # PDF entropy band
                 if show_entropy_pdf:
@@ -2656,7 +2702,15 @@ class GridWindow(tk.Toplevel):#
 
                 c.setFont("Helvetica", 9)
                 c.setFillColor(black)
+                
+                # Draw page number in center
                 c.drawCentredString(width / 2, 20, f"Page {page + 1} of {num_pages}")
+                
+                # Draw filename on the left (if available)
+                if hasattr(self.parent, 'loaded_file_path') and self.parent.loaded_file_path:
+                    import os
+                    filename = os.path.basename(self.parent.loaded_file_path)
+                    c.drawString(30, 20, filename)
 
                 c.showPage()
 
@@ -2691,6 +2745,47 @@ class GridWindow(tk.Toplevel):#
             x_line = self.PADDING + col * self.CELL_SIZE
             self.canvas.create_line(x_line, self.PADDING, x_line, self.PADDING + len(self.root_list) * self.CELL_SIZE, fill="#ddd")
 
+        # Draw resolution arrows AFTER grid lines but BEFORE chord shapes (so arrows appear behind shapes)
+        if self.show_resolutions_var.get():
+            # First, collect all chord positions
+            temp_positions = []
+            for col, event_key in enumerate(self.sorted_events):
+                event_data = self.events[event_key]
+                chords = event_data.get("chords", set())
+                chords_by_root = {}
+                for chord in chords:
+                    root = self.get_root(chord)
+                    chords_by_root[root] = chord
+                
+                for root, chord in chords_by_root.items():
+                    if root not in self.root_to_row:
+                        continue
+                    row = self.root_to_row[root]
+                    x = self.PADDING + col * self.CELL_SIZE + self.CELL_SIZE // 2
+                    y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
+                    temp_positions.append((col, row, x, y, chord))
+            
+            # Draw arrows from grid centers (will be hidden behind chord shapes)
+            pos_dict = {(col, row): (x, y, chord) for col, row, x, y, chord in temp_positions}
+            end_offset = self.CELL_SIZE * 0.75  # Stop at upper-left area of target square
+            for (col, row), (x1, y1, chord1) in pos_dict.items():
+                diag_pos = (col + 1, row + 1)
+                if diag_pos in pos_dict:
+                    x2, y2, chord2 = pos_dict[diag_pos]
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    dist = (dx**2 + dy**2) ** 0.5
+                    if dist == 0:
+                        continue
+                    dx_norm = dx / dist
+                    dy_norm = dy / dist
+                    # Start from grid center (not circle edge)
+                    start_x = x1
+                    start_y = y1
+                    end_x = x2 - dx_norm * end_offset
+                    end_y = y2 - dy_norm * end_offset
+                    self.canvas.create_line(start_x, start_y, end_x, end_y, arrow=tk.LAST, fill="black", width=2)
+
         self.chord_positions.clear()
 
         # Draw chords as circles/triangles
@@ -2713,8 +2808,11 @@ class GridWindow(tk.Toplevel):#
                     x = self.PADDING + col * self.CELL_SIZE + self.CELL_SIZE // 2
                     y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
 
+                    # Get chord type for shape determination
                     chord_type = self.classify_chord_type(chord)
-                    fill_color = self.CHORD_TYPE_COLORS_TK.get(chord_type, "#CCCCCC") if self.color_pdf_var.get() else "white"
+                    # Get strength category for color determination  
+                    strength_category = self.get_chord_strength_category(chord, event_key)
+                    fill_color = self.STRENGTH_COLORS_TK.get(strength_category, "#CCCCCC") if self.color_pdf_var.get() else "white"
 
                     if chord_type == "maj":
                         # Upward pointing triangle
@@ -2756,25 +2854,7 @@ class GridWindow(tk.Toplevel):#
                     fill="black", outline=""
                 )
 
-        # Draw resolution pattern arrows if enabled (unchanged)
-        if self.show_resolutions_var.get():
-            pos_dict = {(col, row): (x, y, chord) for col, row, x, y, chord in self.chord_positions}
-            for (col, row), (x1, y1, chord1) in pos_dict.items():
-                diag_pos = (col + 1, row + 1)
-                if diag_pos in pos_dict:
-                    x2, y2, chord2 = pos_dict[diag_pos]
-                    dx = x2 - x1
-                    dy = y2 - y1
-                    dist = (dx**2 + dy**2) ** 0.5
-                    if dist == 0:
-                        continue
-                    dx_norm = dx / dist
-                    dy_norm = dy / dist
-                    start_x = x1 + dx_norm * radius
-                    start_y = y1 + dy_norm * radius
-                    end_x = x2 - dx_norm * radius
-                    end_y = y2 - dy_norm * radius
-                    self.canvas.create_line(start_x, start_y, end_x, end_y, arrow=tk.LAST, fill="black", width=2)
+
 
         # Thin outer boundary matching grid lines
         self.canvas.create_line(
