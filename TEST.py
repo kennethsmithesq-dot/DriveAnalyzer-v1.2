@@ -1355,8 +1355,10 @@ class MidiChordAnalyzer(tk.Tk):
                         clean_stack = CLEAN_STACK_SYMBOL in chord_entry
                         root2 = ROOT2_SYMBOL in chord_entry
                         root3 = ROOT3_SYMBOL in chord_entry
-                        chord = chord_entry.replace(CLEAN_STACK_SYMBOL, "").replace(ROOT2_SYMBOL, "").replace(ROOT3_SYMBOL, "")
-                        chords.add(chord)
+                        chord = chord_entry.replace(CLEAN_STACK_SYMBOL, "").replace(ROOT2_SYMBOL, "").replace(ROOT3_SYMBOL, "").strip()
+                        # Skip empty or invalid chord names
+                        if chord and chord != "":
+                            chords.add(chord)
                         root_count = 1
                         if root3:
                             root_count = 3
@@ -1625,18 +1627,30 @@ class EmbeddedMidiKeyboard:
             else:
                 self.triads_btn.config(text="Include triads: OFF", bg="#666666", fg="white", activebackground="#777777")
         
+        # Platform-friendly triads button
+        import platform
+        if platform.system() == "Darwin":  # Mac
+            triads_btn_kwargs = {"font": ("Segoe UI", 10), "cursor": "hand2"}
+        else:  # PC/Linux
+            triads_btn_kwargs = {"font": ("Segoe UI", 10, "bold"), "relief": "flat", "bd": 1, "cursor": "hand2"}
+            
         self.triads_btn = tk.Button(
             controls_frame, text="Include triads: ON" if self.include_triads_var.get() else "Include triads: OFF",
-            font=("Segoe UI", 10, "bold"), relief="flat", bd=1,
-            command=toggle_triads, cursor="hand2"
+            command=toggle_triads, **triads_btn_kwargs
         )
         self.triads_btn.pack(side="left", padx=10, pady=2)
         update_button_style()
 
+        # Platform-friendly clear button
+        if platform.system() == "Darwin":  # Mac
+            clear_btn_kwargs = {"font": ("Segoe UI", 11), "padx": 12, "pady": 5}
+        else:  # PC/Linux
+            clear_btn_kwargs = {"font": ("Segoe UI", 11, "bold"), "bg": "#444444", "fg": "white", 
+                               "activebackground": "#666666", "activeforeground": "white", 
+                               "bd": 0, "padx": 12, "pady": 5}
+        
         self.clear_button = tk.Button(
-            controls_frame, text="Clear", font=("Segoe UI", 11, "bold"),
-            bg="#444444", fg="white", activebackground="#666666", activeforeground="white",
-            bd=0, padx=12, pady=5, command=self._clear_selection
+            controls_frame, text="Clear", command=self._clear_selection, **clear_btn_kwargs
         )
         self.clear_button.pack(side="left", padx=10)
 
@@ -2007,10 +2021,14 @@ class GridWindow(tk.Toplevel):#
         self.configure(bg="white")
         
         # Configure white theme for GridWindow ttk widgets
+        import platform
         from tkinter import ttk
         style = ttk.Style()
         style.configure("GridWindow.TFrame", background="white")
-        style.configure("GridWindow.TCheckbutton", background="white", foreground="black")
+        
+        # Platform-specific text color for checkboxes (white on Mac, black on PC)
+        checkbox_fg = "white" if platform.system() == "Darwin" else "black"
+        style.configure("GridWindow.TCheckbutton", background="white", foreground=checkbox_fg)
         style.configure("GridWindow.TButton", background="white", foreground="black")
 
         self.parent = parent
@@ -2187,13 +2205,43 @@ class GridWindow(tk.Toplevel):#
         
         text_widget.insert("1.0", entropy_text)
         text_widget.config(state="disabled")
+        
+        # Calculate optimal window size based on text content
+        lines = entropy_text.split('\n')
+        max_line_length = max(len(line) for line in lines) if lines else 50
+        num_lines = len(lines)
+        
+        # Estimate character width and height based on font
+        char_width = 7 if platform.system() == "Darwin" else 8  # Monaco vs Consolas
+        char_height = 15
+        
+        # Calculate window dimensions with padding for scrollbars and margins
+        content_width = max_line_length * char_width + 60  # +60 for scrollbar and margins
+        content_height = min(num_lines * char_height + 100, 600)  # Cap at 600px height
+        
+        # Set minimum and maximum sizes
+        window_width = max(400, min(content_width, 1400))  # Between 400-1400px
+        window_height = max(300, content_height)
+        
+        info_win.geometry(f"{window_width}x{window_height}")
+        
+        # Center the window on screen
+        info_win.update_idletasks()
+        x = (info_win.winfo_screenwidth() - window_width) // 2
+        y = (info_win.winfo_screenheight() - window_height) // 2
+        info_win.geometry(f"{window_width}x{window_height}+{x}+{y}")
         def save_entropy_info():
             from tkinter import filedialog
             path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")], title="Save Entropy Info")
             if path:
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(entropy_text)
-        save_btn = tk.Button(info_win, text="Save", command=save_entropy_info, bg="#ff00ff", fg="#fff", font=("Segoe UI", 10, "bold"))
+        # Platform-friendly button styling
+        if platform.system() == "Darwin":  # Mac
+            save_btn_kwargs = {}
+        else:  # PC/Linux
+            save_btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "font": ("Segoe UI", 10, "bold")}
+        save_btn = tk.Button(info_win, text="Save", command=save_entropy_info, **save_btn_kwargs)
         save_btn.pack(pady=(0,10))
 
 
@@ -2972,11 +3020,33 @@ class EntropyAnalyzer:
     # --------------------------
     def _fourth_up(self, root: str) -> str:
         """Return the note a perfect fourth above the given root."""
+        # Handle empty or None input
+        if not root or root.strip() == "":
+            return ""
+            
+        root = root.strip()
         chromatic_sharps = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
         flats_to_sharps = {'Db': 'C#', 'Eb': 'D#', 'Fb': 'E', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#', 'Cb': 'B'}
-        note = flats_to_sharps.get(root, root)
+        
+        # Extract just the root note (remove chord quality, extensions, etc.)
+        # Handle chord symbols like "C7", "Dm", "F#maj7", etc.
+        root_note = ""
+        for i, char in enumerate(root):
+            if i == 0 and char in 'ABCDEFG':
+                root_note = char
+            elif i == 1 and char in '#b':
+                root_note += char
+                break
+            else:
+                break
+        
+        if not root_note:
+            self.logger(f"[Warning] _fourth_up: cannot extract root note from '{root}'")
+            return root
+            
+        note = flats_to_sharps.get(root_note, root_note)
         if note not in chromatic_sharps:
-            self.logger(f"[Warning] _fourth_up: unknown note {root}")
+            self.logger(f"[Warning] _fourth_up: unknown note '{root_note}' from chord '{root}'")
             return root
         index = chromatic_sharps.index(note)
         fourth_index = (index + 5) % 12  # perfect fourth = +5 semitones
@@ -2984,9 +3054,29 @@ class EntropyAnalyzer:
 
     def _fifth_up(self, root: str) -> str:
         """Return the note a perfect fifth above the given root."""
+        # Handle empty or None input
+        if not root or root.strip() == "":
+            return ""
+            
+        root = root.strip()
         chromatic_sharps = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
         flats_to_sharps = {'Db': 'C#', 'Eb': 'D#', 'Fb': 'E', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#', 'Cb': 'B'}
-        note = flats_to_sharps.get(root, root)
+        
+        # Extract just the root note (remove chord quality, extensions, etc.)
+        root_note = ""
+        for i, char in enumerate(root):
+            if i == 0 and char in 'ABCDEFG':
+                root_note = char
+            elif i == 1 and char in '#b':
+                root_note += char
+                break
+            else:
+                break
+        
+        if not root_note:
+            return root
+            
+        note = flats_to_sharps.get(root_note, root_note)
         if note not in chromatic_sharps:
             return root
         index = chromatic_sharps.index(note)
@@ -3072,8 +3162,8 @@ class EntropyAnalyzer:
             prev_event_roots = current_event_roots.copy()
             prev_event_chords = set(chords)
 
-        # Print table
-        col_widths = [30, 6] + [4]*7 + [6]
+        # Print table - wider first column for longer chord names
+        col_widths = [35, 6] + [4]*7 + [6]
         header = ["Event/Chord", "base"] + rule_names + ["Total"]
         header_line = " | ".join(h.ljust(w) for h, w in zip(header, col_widths))
         sep_line = "-+-".join("-"*w for w in col_widths)
