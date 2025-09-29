@@ -1615,31 +1615,28 @@ class EmbeddedMidiKeyboard:
         controls_frame = tk.Frame(self.parent, bg="black")
         controls_frame.pack(pady=10)
 
-        # Clean toggle button for triads
+        # Clean toggle button for triads - same style as Clear button
         def toggle_triads():
             self.include_triads_var.set(not self.include_triads_var.get())
+            # Update button text to reflect new state
+            new_text = "Include triads: ON" if self.include_triads_var.get() else "Include triads: OFF"
+            self.triads_btn.config(text=new_text)
             self.analyze_chord()  # refresh analysis when toggled
-            update_button_style()
         
-        def update_button_style():
-            if self.include_triads_var.get():
-                self.triads_btn.config(text="Include triads: ON", bg="#00aa44", fg="white", activebackground="#00cc55")
-            else:
-                self.triads_btn.config(text="Include triads: OFF", bg="#666666", fg="white", activebackground="#777777")
-        
-        # Platform-friendly triads button
+        # Platform-friendly triads button - same approach as Clear button
         import platform
         if platform.system() == "Darwin":  # Mac
-            triads_btn_kwargs = {"font": ("Segoe UI", 10), "cursor": "hand2"}
+            triads_btn_kwargs = {"font": ("Segoe UI", 10), "padx": 12, "pady": 5}
         else:  # PC/Linux
-            triads_btn_kwargs = {"font": ("Segoe UI", 10, "bold"), "relief": "flat", "bd": 1, "cursor": "hand2"}
+            triads_btn_kwargs = {"font": ("Segoe UI", 10, "bold"), "bg": "#444444", "fg": "white", 
+                               "activebackground": "#666666", "activeforeground": "white", 
+                               "bd": 0, "padx": 12, "pady": 5}
             
         self.triads_btn = tk.Button(
             controls_frame, text="Include triads: ON" if self.include_triads_var.get() else "Include triads: OFF",
             command=toggle_triads, **triads_btn_kwargs
         )
         self.triads_btn.pack(side="left", padx=10, pady=2)
-        update_button_style()
 
         # Platform-friendly clear button
         if platform.system() == "Darwin":  # Mac
@@ -2703,9 +2700,11 @@ class GridWindow(tk.Toplevel):#
                         bx = margin_left + col_idx * cell_size + cell_size / 2
                         by = height - (margin_y + brow * cell_size + cell_size / 2)
                         dot_radius = 2.5
-                        # Position dot at bottom of shape, outside the circle/triangle edge
-                        # PDF coordinates: Y increases upward, so subtract to go down
-                        dot_y_position = by - radius - dot_radius - 2  # 2 pixels clearance below shape
+                        # Position dot at bottom edge of shape, matching tkinter positioning
+                        # PDF coordinates: Y increases upward, tkinter increases downward
+                        # In tkinter: by + radius places dot at bottom of shape
+                        # In PDF: by - radius places dot at bottom of shape
+                        dot_y_position = by - radius
                         c.setFillColor(black)
                         c.circle(bx, dot_y_position, dot_radius, fill=1, stroke=0)
 
