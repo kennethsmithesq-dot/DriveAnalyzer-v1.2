@@ -55,7 +55,7 @@ PRIORITY = [
 ]
 
 TRIADS = {"C", "Cm", "Caug"}
-CIRCLE_OF_FIFTHS_ROOTS = ['Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#']
+CIRCLE_OF_FIFTHS_ROOTS = ['F#', 'B', 'E', 'A', 'D', 'G', 'C', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb']
 
 ENHARMONIC_EQUIVALENTS = {
     # Single sharps/flats
@@ -134,6 +134,65 @@ class LoadOptionsDialog(tk.Toplevel):
             self.destroy()
 
 class MidiChordAnalyzer(tk.Tk):
+    def debug_print_notes(self):
+        """Print all notes and chords with bar, beat, and duration for debugging."""
+        if not self.score:
+            print("No score loaded.")
+            return
+        flat_notes = list(self.score.flatten().getElementsByClass([note.Note, m21chord.Chord]))
+        # Use local offset_to_bar_beat from analyze_musicxml
+        def offset_to_bar_beat(offset):
+            # Find the last time signature whose offset is <= given offset
+            time_signatures = []
+            for ts in self.score.flatten().getElementsByClass(meter.TimeSignature):
+                offset_ts = float(ts.offset)
+                time_signatures.append((offset_ts, int(ts.numerator), int(ts.denominator)))
+            time_signatures.sort(key=lambda x: x[0])
+            if not time_signatures:
+                num, denom = 4, 4
+                return 1, int(offset) + 1, f"{num}/{denom}"
+            elif time_signatures[0][0] > 0.0:
+                first_num, first_den = time_signatures[0][1], time_signatures[0][2]
+                time_signatures.insert(0, (0.0, first_num, first_den))
+            bars_before = 0
+            for i, (t_off, num, denom) in enumerate(time_signatures):
+                next_off = time_signatures[i + 1][0] if i + 1 < len(time_signatures) else None
+                beat_len = 4.0 / denom
+                if next_off is None or offset < next_off:
+                    beats_since_t = (offset - t_off) / beat_len
+                    if beats_since_t < 0:
+                        beats_since_t = (offset) / beat_len
+                        bars = int(beats_since_t // num)
+                        beat = int(beats_since_t % num) + 1
+                        return bars + 1, beat, f"{num}/{denom}"
+                    bar_in_segment = int(beats_since_t // num)
+                    beat = int(beats_since_t % num) + 1
+                    return bars_before + bar_in_segment + 1, beat, f"{num}/{denom}"
+                else:
+                    segment_beats = (next_off - t_off) / beat_len
+                    bars_in_segment = int(segment_beats // num)
+                    bars_before += bars_in_segment
+            num, denom = time_signatures[-1][1], time_signatures[-1][2]
+            beat_len = 4.0 / denom
+            beats = offset / beat_len
+            return int(beats // num) + 1, int(beats % num) + 1, f"{num}/{denom}"
+
+        print("Note List:")
+        for elem in flat_notes:
+            if isinstance(elem, note.Note):
+                name = elem.nameWithOctave
+                midi = elem.pitch.midi
+                dur = elem.quarterLength
+                offset = elem.offset
+                bar, beat, ts = offset_to_bar_beat(offset)
+                print(f"Note: {name} (MIDI {midi}) | Bar {bar}, Beat {beat} ({ts}) | Duration: {dur}")
+            elif isinstance(elem, m21chord.Chord):
+                names = [p.nameWithOctave for p in elem.pitches]
+                midis = [p.midi for p in elem.pitches]
+                dur = elem.quarterLength
+                offset = elem.offset
+                bar, beat, ts = offset_to_bar_beat(offset)
+                print(f"Chord: {names} (MIDIs {midis}) | Bar {bar}, Beat {beat} ({ts}) | Duration: {dur}")
     def __init__(self):
         super().__init__()
         self.title("🎵 MIDI Drive Analyzer")
@@ -163,7 +222,7 @@ class MidiChordAnalyzer(tk.Tk):
 
         # Collapse similar events is always enabled; sensitivity controls how strict
         self.collapse_similar_events = True
-        # Persisted slider position (1..5). Default center = 3
+        # Persisted slider position (1..7). Default center = 3 (old position 1 - low merging)
         self.collapse_sensitivity_pos = getattr(self, 'collapse_sensitivity_pos', 3)
 
         # Instance-level merge parameters (initialized from top-level constants)
@@ -250,7 +309,7 @@ class MidiChordAnalyzer(tk.Tk):
         self.result_text = Text(
             self, bg="black", fg="white", font=("Consolas", 11),
             wrap="word", borderwidth=0, highlightthickness=0,
-            selectbackground="black", selectforeground="white",
+            selectbackground="blue", selectforeground="white",
             insertbackground="white", relief="flat", padx=0, pady=0,
             insertborderwidth=0, insertwidth=0, 
             highlightbackground="black", highlightcolor="black"
@@ -330,9 +389,11 @@ class MidiChordAnalyzer(tk.Tk):
         )
         if not path:
             return
-        self.loaded_file_path = path
-        self.score = converter.parse(path)
-        self.run_analysis()
+        else:
+            self.loaded_file_path = path
+            self.score = converter.parse(path)
+            self.debug_print_notes()
+            self.run_analysis()
 
     def run_analysis(self):
         # Use self.include_triads and self.sensitivity
@@ -397,9 +458,9 @@ class MidiChordAnalyzer(tk.Tk):
         # Separator line
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
-        ttk.Label(dialog, text="Merge similar events together (1=low merging, 5=high merging):").pack(anchor="w", padx=12, pady=(8, 0))
-        # Normal endpoints so left shows Low (1) and right shows High (5)
-        sens_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=sensitivity_scale_var)
+        ttk.Label(dialog, text="Merge similar events together (1=minimal merging, 7=high merging):").pack(anchor="w", padx=12, pady=(8, 0))
+        # Extended range: positions 1-2 are more restrictive than old position 1, position 3 = old position 1 (default)
+        sens_scale = tk.Scale(dialog, from_=1, to=7, orient="horizontal", variable=sensitivity_scale_var)
         sens_scale.pack(fill="x", padx=12)
 
         # Separator line
@@ -433,16 +494,18 @@ class MidiChordAnalyzer(tk.Tk):
             # Collapsing is always enabled
             self.collapse_similar_events = True
 
-            # Map slider position to merge parameter presets (flipped behavior)
-            # GUI position 1 = low merging (old preset 5), GUI position 5 = high merging (old preset 1)
+            # Map slider position to merge parameter presets (7 positions)
+            # Position 3 = old position 1 (default), positions 1-2 are more restrictive than old position 1
             presets = {
-                1: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},  # Low merging (strict)
-                2: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},  # 
-                3: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},  # Medium (unchanged)
-                4: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},  # 
-                5: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},  # High merging (loose)
+                1: {"jaccard": 0.95, "bass": 0.85, "bar": 0, "diff": 0},  # Minimal merging (very strict)
+                2: {"jaccard": 0.90, "bass": 0.80, "bar": 0, "diff": 0},  # Very low merging (extra strict)
+                3: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},  # Low merging (old position 1 - DEFAULT)
+                4: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},  # Medium-low (old position 2)
+                5: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},  # Medium (old position 3)
+                6: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},  # Medium-high (old position 4)
+                7: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},  # High merging (old position 5)
             }
-            chosen = presets.get(pos, presets[3])
+            chosen = presets.get(pos, presets[3])  # Default to position 3 (old position 1)
             self.merge_jaccard_threshold = chosen["jaccard"]
             self.merge_bass_overlap = chosen["bass"]
             self.merge_bar_distance = chosen["bar"]
@@ -700,18 +763,33 @@ class MidiChordAnalyzer(tk.Tk):
             test_notes = set(active_notes)
             test_pitches = set(active_pitches)
             if self.include_anacrusis:
+                bar, beat, ts = offset_to_bar_beat(time)
+                if bar == 3 and beat == 1:
+                    print(f"DEBUG ANACRUSIS: Before anacrusis - test_notes={sorted(test_notes)}")
                 for s_start, s_end, s_pitch in single_notes:
                     if s_end == time and (s_pitch % 12) not in test_notes:
+                        if bar == 3 and beat == 1:
+                            print(f"  Adding anacrusis note: {s_pitch} (pc={s_pitch % 12}) ended at time {time}")
                         test_notes.add(s_pitch % 12)
                         test_pitches.add(s_pitch)
+                if bar == 3 and beat == 1:
+                    print(f"DEBUG ANACRUSIS: After anacrusis - test_notes={sorted(test_notes)}")
 
             if len(test_notes) >= 3:
                 # DEBUG: Check for phantom notes at Bar 11, Beat 1
                 bar, beat, ts = offset_to_bar_beat(time)
-                chords = self.detect_chords(test_notes, debug=False)
+                
+                # DEBUG: Print what notes are being considered for chord detection
+                if bar == 3 and beat == 1:
+                    print(f"DEBUG Bar {bar}, Beat {beat}: test_notes={sorted(test_notes)}, test_pitches={sorted(test_pitches)}")
+                    print(f"  Active notes before anacrusis: {sorted(active_notes)}")
+                
+                chords = self.detect_chords(test_notes, debug=(bar == 3 and beat == 1))
                 bar, beat, ts = offset_to_bar_beat(time)
                 key = (bar, beat, ts)
                 # Event created; previously had diagnostic printing here which has been removed
+                if bar == 3 and beat == 1:
+                    print(f"DEBUG BLOCK CHORD: detect_chords returned: {chords}")
                 if chords:
                     bass_note = self.semitone_to_note(min(test_pitches) % 12)
                     if key not in events:
@@ -720,6 +798,8 @@ class MidiChordAnalyzer(tk.Tk):
                     
                     events[key]["chords"].update(chords)
                     events[key]["basses"].add(bass_note)
+                    if bar == 3 and beat == 1:
+                        print(f"DEBUG EVENT CREATION: Added chords {chords} to event {key}")
                     
 
                     
@@ -740,127 +820,107 @@ class MidiChordAnalyzer(tk.Tk):
             melodic_notes = [elem for elem in flat_notes if isinstance(elem, note.Note)]
             melodic_notes = sorted(melodic_notes, key=lambda n: n.offset)
             
-            from itertools import combinations
-            
-            # Safety check - avoid excessive computation with too many notes
-            if len(melodic_notes) > 50:
-                pass  # Skip arpeggio detection if too many notes to avoid crash
-            else:
-                window_sizes = [3, 4]
-                for w in window_sizes:
-                    # Check all possible combinations of w notes (not just consecutive positions)
-                    for window_indices in combinations(range(len(melodic_notes)), w):
-                        window = [melodic_notes[idx] for idx in window_indices]
-                        window_offsets = [n.offset for n in window]
+            # DEBUG: Show single notes in Bar 10-12 range
+            print("[ARPEGGIO DEBUG] Single notes in Bar 10-12 range:")
+            for note_elem in melodic_notes:
+                bar, beat, ts = offset_to_bar_beat(note_elem.offset)
+                if 10 <= bar <= 12:
+                    print(f"  Offset {note_elem.offset}: Bar {bar}.{beat} - Pitch {note_elem.pitch.midi} ({note_elem.pitch.name})")
+            print()
+            window_sizes = [3, 4]
+            for w in window_sizes:
+                for i in range(len(melodic_notes) - w + 1):
+                    window = melodic_notes[i:i+w]
+                    window_offsets = [n.offset for n in window]
+                    # Only consider windows with strictly increasing onsets
+                    if any(window_offsets[j] >= window_offsets[j+1] for j in range(w-1)):
+                        continue
+                    window_pitches = [n.pitch.midi for n in window]
+                    window_pcs = {p % 12 for p in window_pitches}
+                    if len(window_pcs) < 3:
+                        continue
+                    chords = self.detect_chords(window_pcs, debug=True)
+                    if chords:
+                        # DEBUG: Show arpeggio window details for Bar 10-12 range
+                        bar, beat, ts = offset_to_bar_beat(window[0].offset)
+                        if 10 <= bar <= 12:
+                            print(f"[ARPEGGIO WINDOW] Window size {w}: notes at offsets {[n.offset for n in window]}")
+                            print(f"[ARPEGGIO WINDOW] Pitches: {[n.pitch.midi for n in window]} -> PCs: {list(window_pcs)}")
+                            print(f"[ARPEGGIO WINDOW] Detected chords: {chords}")
+                            print(f"[ARPEGGIO WINDOW] Assigned to: Bar {bar}.{beat} (first note offset {window[0].offset})")
                         
-                        # Only consider windows with strictly increasing onsets
-                        if any(window_offsets[j] >= window_offsets[j+1] for j in range(w-1)):
-                            continue
-                            
-                        # CRITICAL: Check no other notes exist between ANY pair in this window
-                        valid_arpeggio = True
-                        for i in range(len(window) - 1):
-                            start_time = window[i].offset
-                            end_time = window[i + 1].offset
-                            # Check if any other melodic notes fall between these two notes
-                            intervening_notes = [n for n in melodic_notes 
-                                               if start_time < n.offset < end_time]
-                            if intervening_notes:
-                                valid_arpeggio = False
-                                break
+                        # HARMONIC STABILITY CHECK: Only accept arpeggio if underlying harmony is stable
+                        # Check all time points in the arpeggio window for existing block chords
+                        underlying_chords = []
+                        for note_elem in window:
+                            note_bar, note_beat, note_ts = offset_to_bar_beat(note_elem.offset)
+                            note_key = (note_bar, note_beat, note_ts)
+                            existing_chords = events.get(note_key, {}).get('chords', set())
+                            if existing_chords:
+                                underlying_chords.append((note_key, existing_chords))
                         
-                        if not valid_arpeggio:
-                            continue
-                        window_pitches = [n.pitch.midi for n in window]
-                        window_pcs = {p % 12 for p in window_pitches}
+                        # Decision logic:
+                        # 1. No block chords throughout span → Accept arpeggio
+                        # 2. Same block chord throughout span → Accept arpeggio  
+                        # 3. Different block chords in span → Reject arpeggio
+                        harmonic_stability = True
+                        if underlying_chords:
+                            # Check if all underlying chords are the same
+                            first_chord_set = underlying_chords[0][1]
+                            for key, chord_set in underlying_chords[1:]:
+                                if chord_set != first_chord_set:
+                                    harmonic_stability = False
+                                    if 10 <= bar <= 12:
+                                        print(f"[ARPEGGIO REJECT] Harmonic instability: {underlying_chords[0][0]} has {list(first_chord_set)}, {key} has {list(chord_set)}")
+                                    break
+                            if harmonic_stability and 10 <= bar <= 12:
+                                print(f"[ARPEGGIO ACCEPT] Harmonic stability: consistent chord {list(first_chord_set)} throughout")
+                        else:
+                            if 10 <= bar <= 12:
+                                print(f"[ARPEGGIO ACCEPT] No underlying block chords - pure melodic arpeggio")
                         
-
+                        if not harmonic_stability:
+                            continue  # Skip this arpeggio
                         
-                        if len(window_pcs) < 3:
-                            continue
-                        chords = self.detect_chords(window_pcs, debug=True)
-                        
-
-                        
-                        if chords:
-                            bar, beat, ts = offset_to_bar_beat(window[0].offset)
-                            
-                            # HARMONIC STABILITY CHECK: Only accept arpeggio if underlying harmony is stable
-                            # Check all time points in the arpeggio window for existing block chords
-                            underlying_chords = []
-                            for note_elem in window:
-                                note_bar, note_beat, note_ts = offset_to_bar_beat(note_elem.offset)
-                                note_key = (note_bar, note_beat, note_ts)
-                                existing_chords = events.get(note_key, {}).get('chords', set())
-                                if existing_chords:
-                                    underlying_chords.append((note_key, existing_chords))
-                            
-
-                            
-                            # Decision logic:
-                            # 1. No block chords throughout span → Accept arpeggio
-                            # 2. Same or harmonically compatible chords throughout span → Accept arpeggio  
-                            # 3. Different block chords in span → Reject arpeggio
-                            harmonic_stability = True
-                            if underlying_chords:
-                                # Check if all underlying chords are harmonically compatible
-                                first_chord_set = underlying_chords[0][1]
-                                for key, chord_set in underlying_chords[1:]:
-                                    # More lenient check: chords are compatible if they share any chord names
-                                    # or if one is a subset/extension of the other (e.g., G vs G7)
-                                    compatible = False
-                                    
-                                    # Check for overlap in chord names
-                                    if first_chord_set & chord_set:  # Any shared chords
-                                        compatible = True
-                                    else:
-                                        # Check if they're extensions of each other (G vs G7, etc.)
-                                        for chord1 in first_chord_set:
-                                            for chord2 in chord_set:
-                                                # Check if one chord is contained in the other (e.g., "G" in "G7")
-                                                if chord1.startswith(chord2) or chord2.startswith(chord1):
-                                                    compatible = True
-                                                    break
-                                            if compatible:
-                                                break
-                                    
-                                    if not compatible:
-                                        harmonic_stability = False
+                        # Before accepting arpeggio detection, compare to any simultaneous block event
+                        key = (bar, beat, ts)
+                        block_pcs = events.get(key, {}).get('event_notes', set())
+                        if block_pcs:
+                            union = window_pcs | block_pcs
+                            inter = window_pcs & block_pcs
+                            jaccard = (len(inter) / len(union)) if union else 0.0
+                            # Debug when F (pc=5) involved to inspect why it may be ignored
+                            # (debug print removed)
+                            # Accept arpeggio if Jaccard passes OR if the detected arpeggio chord's root is present in the simultaneous block_pcs
+                            accept_arpeggio = False
+                            if jaccard >= getattr(self, 'arpeggio_block_similarity_threshold', 0.5):
+                                accept_arpeggio = True
+                            else:
+                                # check whether any detected chord root is present in block_pcs
+                                for chord_name in chords:
+                                    root = next((n for n in sorted(NOTE_TO_SEMITONE.keys(), key=lambda x: -len(x)) if chord_name.startswith(n)), None)
+                                    if root is not None and (NOTE_TO_SEMITONE.get(root) % 12) in block_pcs:
+                                        accept_arpeggio = True
                                         break
-                            
-                            if not harmonic_stability:
-                                continue  # Skip this arpeggio
-                            
-                            # Before accepting arpeggio detection, compare to any simultaneous block event
-                            key = (bar, beat, ts)
-                            block_pcs = events.get(key, {}).get('event_notes', set())
-                            if block_pcs:
-                                union = window_pcs | block_pcs
-                                inter = window_pcs & block_pcs
-                                jaccard = (len(inter) / len(union)) if union else 0.0
-                                
-                                # Accept arpeggio if Jaccard passes OR if the detected arpeggio chord's root is present in the simultaneous block_pcs
-                                accept_arpeggio = False
-                                if jaccard >= getattr(self, 'arpeggio_block_similarity_threshold', 0.5):
-                                    accept_arpeggio = True
-                                else:
-                                    # check whether any detected chord root is present in block_pcs
-                                    for chord_name in chords:
-                                        root = next((n for n in sorted(NOTE_TO_SEMITONE.keys(), key=lambda x: -len(x)) if chord_name.startswith(n)), None)
-                                        if root is not None and (NOTE_TO_SEMITONE.get(root) % 12) in block_pcs:
-                                            accept_arpeggio = True
-                                            break
-                                if not accept_arpeggio:
-                                    continue
-                            # Accept arpeggio event
-                            if key not in events:
-                                events[key] = {"chords": set(), "basses": set(), "event_notes": set(window_pcs)}
-                            events[key]["chords"].update(chords)
-                            # Note: Arpeggios contribute chord detection but NOT bass detection
-                            # Bass should come from actual bass line or block chords, not melody
-                            events[key]["event_notes"] = set(window_pcs)
-                            events[key]["event_pitches"] = set(window_pitches)
-                        
+                            if not accept_arpeggio:
+                                continue
+                        # Accept arpeggio event
+                        if key not in events:
+                            events[key] = {"chords": set(), "basses": set(), "event_notes": set(window_pcs)}
+                        else:
+                            print(f"[ARPEGGIO OVERWRITE] {key}: {list(events[key]['event_notes'])} -> {list(window_pcs)}")
+                        events[key]["chords"].update(chords)
+                        # Note: Arpeggios contribute chord detection but NOT bass detection
+                        # Bass should come from actual bass line or block chords, not melody
+                        events[key]["event_notes"] = set(window_pcs)
+                        events[key]["event_pitches"] = set(window_pitches)
+                        print(f"[ARPEGGIO CREATE] {key}: chords={chords}, window_pcs={list(window_pcs)}")
+                        events[key]["chords"].update(chords)
+                        events[key]["basses"].add(self.semitone_to_note(min(window_pitches) % 12))
+                        events[key]["event_notes"] = set(window_pcs)
+                        events[key]["event_pitches"] = set(window_pitches)
+
+
 
 
         # --- Neighbour / passing-note detection ---
@@ -982,10 +1042,16 @@ class MidiChordAnalyzer(tk.Tk):
                         if completion_key in events:
                             # Merge the completion event into the foundation event
                             completion_event = events[completion_key]
+                            if foundation_key[0] == 3 and foundation_key[1] == 1:
+                                print(f"DEBUG NEIGHBOR MERGE: Merging completion {completion_key} -> foundation {foundation_key}")
+                                print(f"  Before: foundation chords = {events[foundation_key].get('chords', set())}")
+                                print(f"  Adding: completion chords = {completion_event.get('chords', set())}")
                             events[foundation_key]["chords"].update(completion_event.get("chords", set()))
                             events[foundation_key]["basses"].update(completion_event.get("basses", set()))
                             events[foundation_key]["event_notes"].update(completion_event.get("event_notes", set()))
                             events[foundation_key]["event_pitches"] = events[foundation_key].get("event_pitches", set()) | completion_event.get("event_pitches", set())
+                            if foundation_key[0] == 3 and foundation_key[1] == 1:
+                                print(f"  After: foundation chords = {events[foundation_key].get('chords', set())}")
                             
                             # Remove the completion event since it's now merged
                             del events[completion_key]
@@ -1264,18 +1330,62 @@ class MidiChordAnalyzer(tk.Tk):
         # First pass: try candidate roots that are present in the set
         for root in sorted(set(semitones)):
             normalized = {(n - root) % 12 for n in semitones}
+            if debug:
+                print(f"  CHORD DEBUG: Trying root {root}, normalized = {sorted(normalized)}")
+            # Also collect basses and event pitches if available
+            # Try to get the full set of event pitches and basses from the calling context
+            # If not available, fallback to semitones only
+            event_pitches = set()
+            event_basses = set()
+            # Try to get from the caller if possible
+            import inspect
+            frame = inspect.currentframe()
+            try:
+                outer_locals = frame.f_back.f_locals
+                event_pitches = set(outer_locals.get('test_pitches', []))
+                event_basses = set(outer_locals.get('basses', []))
+            except Exception:
+                pass
+            finally:
+                del frame
+
             for name in PRIORITY:
                 if name in TRIADS and not self.include_triads:
                     continue
                 chord_pattern = set(CHORDS[name])
-                if chord_pattern.issubset(normalized):
-                    matched = name.replace('C', self.semitone_to_note(root))
-                    chords_found.append(matched)
-                    break
+                # Special handling for 'no3' chords: only match if third is truly absent
+                if "no3" in name:
+                    third_major = (root + 4) % 12
+                    third_minor = (root + 3) % 12
+                    third_present = False
+                    # Check in semitones
+                    if third_major in semitones or third_minor in semitones:
+                        third_present = True
+                    # Check in event_pitches
+                    if any((p % 12 == third_major or p % 12 == third_minor) for p in event_pitches):
+                        third_present = True
+                    # Check in event_basses
+                    if any((self.semitone_to_note(b) == self.semitone_to_note(third_major) or self.semitone_to_note(b) == self.semitone_to_note(third_minor)) for b in event_basses):
+                        third_present = True
+                    if third_present:
+                        continue  # Third is present, skip 'no3' chord
+                    if chord_pattern.issubset(normalized):
+                        matched = name.replace('C', self.semitone_to_note(root))
+                        chords_found.append(matched)
+                        break
+                else:
+                    if chord_pattern.issubset(normalized):
+                        matched = name.replace('C', self.semitone_to_note(root))
+                        if debug:
+                            print(f"    FOUND: {name} -> {matched} (pattern {sorted(chord_pattern)} matches)")
+                        chords_found.append(matched)
+                        break
 
         # Second pass: try "noroot" style chords where the root pitch-class is absent
         for root in sorted(set(range(12)) - set(semitones)):
             normalized = {(n - root) % 12 for n in semitones}
+            if debug:
+                print(f"  NOROOT DEBUG: Trying absent root {root}, normalized = {sorted(normalized)}")
             for name in PRIORITY:
                 if "noroot" not in name:
                     continue
@@ -1284,8 +1394,18 @@ class MidiChordAnalyzer(tk.Tk):
                 chord_pattern = set(CHORDS[name])
                 if chord_pattern == normalized:
                     matched = name.replace('C', self.semitone_to_note(root))
+                    if debug:
+                        print(f"    NOROOT FOUND: {name} -> {matched} (pattern {sorted(chord_pattern)} matches)")
                     chords_found.append(matched)
                     break
+
+        # BUT WAIT - we're still missing regular chord detection! Let me check if Bm is being found normally
+        if debug:
+            print(f"  REGULAR CHORD CHECK: Looking for Bm pattern [0,3,7] in any normalization...")
+            for root in range(12):
+                normalized = {(n - root) % 12 for n in semitones}
+                if set([0, 3, 7]).issubset(normalized):
+                    print(f"    Bm pattern found with root {root}: normalized = {sorted(normalized)}")
 
         return chords_found
 
@@ -1399,8 +1519,7 @@ class MidiChordAnalyzer(tk.Tk):
         """Apply the same deduplication logic used in display_results to any event dictionary."""
         from typing import List, Tuple, Dict, Any, Set
         
-        # Priority system for chord deduplication (same as in display_results)
-        PRIORITY = ["", "7", "6", "6/9", "9", "11", "13", "sus4", "sus2", "add9", "add11", "add13", "m", "m7", "m6", "m6/9", "m9", "m11", "m13", "mM7", "msus4", "msus2", "madd9", "madd11", "madd13", "dim", "dim7", "ø7", "aug", "+", "+7", "+M7", "M7", "M6", "M6/9", "M9", "M11", "M13", "/3", "/5", "7/3", "7/5", "M7/3", "M7/5", "b5", "7b5", "M7b5", "#5", "7#5", "M7#5", "sus4/7", "sus2/7", "#11", "7#11", "M7#11", "b9", "7b9", "M7b9", "#9", "7#9", "M7#9", "b13", "7b13", "M7b13", "alt", "7alt"]
+        # Use the global PRIORITY list for chord deduplication
 
         def chord_priority(chord_name: str) -> int:
             base = chord_name
@@ -2131,7 +2250,9 @@ class GridWindow(tk.Toplevel):#
         # Load and display image labels for chord roots
         for root, row in self.root_to_row.items():
             y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
-            image_number = row + 1  # Convert 0-based row index to 1-based image numbering
+            # Reverse image numbering to match flipped grid order
+            # Row 0 (F#, now at top) gets image 12, Row 11 (Db, now at bottom) gets image 1
+            image_number = len(self.root_list) - row
             
             try:
                 # Load the corresponding numbered image (use os.path.join for cross-platform paths)
