@@ -1,3 +1,12 @@
+"""
+MIDI Chord Analyzer - Advanced Music Theory Analysis Tool
+
+A comprehensive application for analyzing chord progressions and harmonic structures
+from MusicXML files. Features block chord detection, arpeggio analysis, anacrusis
+handling, and advanced merging algorithms with visual timeline display.
+For info: see Desire in Chromatic Harmony by Kenneth Smith (Oxford, 2020).
+"""
+
 import os
 import platform
 import sys
@@ -16,30 +25,27 @@ from music21 import converter, note, chord as m21chord, meter, stream
 
 
 def resource_path(relative_path: str) -> str:
-    """Return absolute path to resource, working for dev and PyInstaller bundles.
-
-    When running as a PyInstaller --onefile executable, files added with
-    --add-data are extracted to a temporary folder accessible via
-    sys._MEIPASS. This helper returns the correct path in both dev and
-    frozen environments.
-    """
+    """Return absolute path to resource for both development and PyInstaller builds."""
     base_path = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
     return os.path.join(base_path, relative_path)
 
-# Marker symbols for chord analysis
-CLEAN_STACK_SYMBOL = "✅"
-ROOT2_SYMBOL = "²"
-ROOT3_SYMBOL = "³"
+# Display symbols for chord analysis visualization
+CLEAN_STACK_SYMBOL = "✅"  # Indicates clean stacked chord voicing
+ROOT2_SYMBOL = "²"         # Second inversion marker
+ROOT3_SYMBOL = "³"         # Third inversion marker
 
 def beautify_chord(chord: str) -> str:
+    """Convert flat (b) and sharp (#) symbols to proper musical notation."""
     return chord.replace("b", "♭").replace("#", "♯")
 
+# Music theory constants and chord definitions
 NOTE_TO_SEMITONE = {
     'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4,
     'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8, 'A': 9,
     'A#': 10, 'Bb': 10, 'B': 11
 }
 
+# Chord patterns defined as semitone intervals from root
 CHORDS = {
     "C7": [0, 4, 7, 10], "C7b5": [0, 4, 6, 10], "C7#5": [0, 4, 8, 10],
     "Cm7": [0, 3, 7, 10], "Cø7": [0, 3, 6, 10], "C7m9noroot": [1, 4, 7, 10],
@@ -48,17 +54,19 @@ CHORDS = {
     "Cmaj7": [0, 4, 7, 11], "CmMaj7": [0, 3, 7, 11]
 }
 
+# Chord detection priority (more specific chords checked first)
 PRIORITY = [
     "C7", "C7b5", "C7#5", "Cm7", "Cø7", "C7m9noroot",
     "C7no3", "C7no5", "C7noroot", "Caug", "C", "Cm",
     "Cmaj7", "CmMaj7"
 ]
 
-TRIADS = {"C", "Cm", "Caug"}
+TRIADS = {"C", "Cm", "Caug"}  # Basic three-note chords
 CIRCLE_OF_FIFTHS_ROOTS = ['F#', 'B', 'E', 'A', 'D', 'G', 'C', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb']
 
+# Enharmonic equivalents for note normalization
 ENHARMONIC_EQUIVALENTS = {
-    # Single sharps/flats
+    # Common enharmonic pairs
     'A#': 'Bb', 'Bb': 'Bb',
     'C#': 'Db', 'Db': 'Db',
     'D#': 'Eb', 'Eb': 'Eb',
@@ -66,36 +74,30 @@ ENHARMONIC_EQUIVALENTS = {
     'G#': 'Ab', 'Ab': 'Ab',
     'E#': 'F',  'Fb': 'E',
     'B#': 'C',  'Cb': 'B',
-    # Double sharps
+    # Double accidentals
     'A##': 'B', 'B##': 'C#', 'C##': 'D', 'D##': 'E', 'E##': 'F#', 'F##': 'G', 'G##': 'A',
-    # Double flats
     'Abb': 'G', 'Bbb': 'A', 'Cbb': 'Bb', 'Dbb': 'C', 'Ebb': 'D', 'Fbb': 'Eb', 'Gbb': 'F',
-    # Triple sharps (rare, but for completeness)
+    # Triple accidentals (rare edge cases)
     'A###': 'B#', 'B###': 'C##', 'C###': 'D#', 'D###': 'E#', 'E###': 'F##', 'F###': 'G#', 'G###': 'A#',
-    # Triple flats (rare)
     'Abbb': 'Gb', 'Bbbb': 'G', 'Cbbb': 'A', 'Dbbb': 'Bb', 'Ebbb': 'C', 'Fbbb': 'Db', 'Gbbb': 'Eb',
 }
 
-# Merge sensitivity params (tweak these)
-# Central (medium) position presets are tuned so the slider position 3 matches these values.
-# Jaccard threshold: how similar root-sets must be to consider merging (higher = stricter). If collapsing too much, raise this number.
-MERGE_JACCARD_THRESHOLD = 0.60
-# Bass overlap proportion required on the secondary merge path (0.0..1.0). If collapsing too much, lower this number.
-MERGE_BASS_OVERLAP = 0.50
-# How many bars apart events can be to allow merging (0 = same bar only)
-MERGE_BAR_DISTANCE = 1
-# Maximum number of differing roots allowed as a simple-diff test
-MERGE_DIFF_MAX = 1
+# Event merging algorithm parameters (default values for position 3 of 7-position slider)
+MERGE_JACCARD_THRESHOLD = 0.60  # Chord similarity threshold (0.0-1.0, higher = stricter)
+MERGE_BASS_OVERLAP = 0.50       # Required bass note overlap for merging (0.0-1.0)
+MERGE_BAR_DISTANCE = 1          # Maximum bars apart for events to merge (0 = same bar only)
+MERGE_DIFF_MAX = 1              # Maximum root differences allowed for simple merge path
 
 class LoadOptionsDialog(tk.Toplevel):
+    """Dialog for selecting MusicXML files and analysis options."""
+    
     def __init__(self, parent):
         super().__init__(parent)
-        self.result = None  # <-- Fix: always define self.result
+        self.result = None
         self.include_triads_var = BooleanVar(value=True)
         self.sensitivity_var = tk.StringVar(value="Medium")
         self.selected_file = None
         self.build_ui()
-# ...existing code...
     def build_ui(self):
         frame = tk.Frame(self, bg="black")
         frame.pack(padx=10, pady=10, fill="x")
@@ -114,7 +116,6 @@ class LoadOptionsDialog(tk.Toplevel):
                 style="White.TRadiobutton"
             ).pack(anchor="w")
 
-        # Only allow XML files
         ttk.Button(frame, text="Select MusicXML File", command=self.select_file).pack(pady=10)
 
     def select_file(self):
@@ -134,6 +135,16 @@ class LoadOptionsDialog(tk.Toplevel):
             self.destroy()
 
 class MidiChordAnalyzer(tk.Tk):
+    """
+    Main application class for MIDI chord analysis.
+    
+    Analyzes MusicXML files to detect chord progressions using multiple algorithms:
+    - Block chord detection from simultaneous notes
+    - Arpeggio pattern recognition from melodic sequences  
+    - Anacrusis handling for melodic resolution notes
+    - Advanced event merging with configurable sensitivity
+    """
+    
     def debug_print_notes(self):
         """Print all notes and chords with bar, beat, and duration for debugging."""
         if not self.score:
@@ -199,7 +210,7 @@ class MidiChordAnalyzer(tk.Tk):
         self.geometry("650x850")
         self.configure(bg="black")
 
-        # Configure ttk styles for black theme
+        # Configure dark theme styles
         from tkinter import ttk
         style = ttk.Style()
         style.configure("White.TCheckbutton", background="black", foreground="white", focuscolor="black")
@@ -207,55 +218,52 @@ class MidiChordAnalyzer(tk.Tk):
         style.configure("White.TLabel", background="black", foreground="white")
         style.configure("TFrame", background="black")
 
-        # Analysis options (defaults)
+        # Analysis algorithm settings
         self.include_triads = True
         self.sensitivity = "Medium"
         self.remove_repeats = True
         self.include_anacrusis = True
         self.include_non_drive_events = True
         self.arpeggio_searching = True
-        # New: neighbour/passing notes detection (ON by default)
         self.neighbour_notes_searching = True
-        # Arpeggio vs. block-chord similarity threshold (0.0..1.0). If an arpeggio's pitch-class
-        # set shares less than this proportion with the simultaneous block-chord, discard it.
         self.arpeggio_block_similarity_threshold = 0.5
 
-        # Collapse similar events is always enabled; sensitivity controls how strict
+        # Event merging configuration
         self.collapse_similar_events = True
-        # Persisted slider position (1..7). Default center = 3 (old position 1 - low merging)
-        self.collapse_sensitivity_pos = getattr(self, 'collapse_sensitivity_pos', 3)
+        self.collapse_sensitivity_pos = getattr(self, 'collapse_sensitivity_pos', 3)  # 7-position slider, default=3
 
-        # Instance-level merge parameters (initialized from top-level constants)
+        # Merge algorithm parameters (updated by slider)
         self.merge_jaccard_threshold = MERGE_JACCARD_THRESHOLD
         self.merge_bass_overlap = MERGE_BASS_OVERLAP
         self.merge_bar_distance = MERGE_BAR_DISTANCE
         self.merge_diff_max = MERGE_DIFF_MAX
 
-        # Runtime state
+        # Application state
         self.loaded_file_path = None
         self.score = None
         self.analyzed_events = None
-        self.processed_events = None  # Store the processed events for grid display
+        self.processed_events = None
 
-        # Build UI and show splash
         self.build_ui()
         self.show_splash()
 
 
 
     def build_ui(self):
+        """Create the main user interface with cross-platform styling."""
         is_mac = platform.system() == "Darwin"
-        # Add extra top padding for macOS
-        top_pad = 30 if is_mac else 10
+        top_pad = 30 if is_mac else 10  # Extra padding for macOS title bar
         frame = Frame(self, bg="black")
         frame.pack(pady=(top_pad, 10))
 
-        # Button style logic
+        # Platform-specific button styling
         if is_mac:
             btn_kwargs = {}
             disabled_fg = "#cccccc"
         else:
-            btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", "activeforeground": "#fff", "relief": "raised", "bd": 2, "font": ("Segoe UI", 10, "bold")}
+            btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", 
+                         "activeforeground": "#fff", "relief": "raised", "bd": 2, 
+                         "font": ("Segoe UI", 10, "bold")}
             disabled_fg = "black"
 
         tk.Button(frame, text="Load XML", command=self.load_music_file, **btn_kwargs).pack(side="left", padx=5)
@@ -306,10 +314,11 @@ class MidiChordAnalyzer(tk.Tk):
         self.load_analysis_btn = tk.Button(frame, text="Load Analysis", command=self.load_analysis_txt, **btn_kwargs)
         self.load_analysis_btn.pack(side="left", padx=5)
 
+        # Main analysis results display with dark theme and proper text selection
         self.result_text = Text(
             self, bg="black", fg="white", font=("Consolas", 11),
             wrap="word", borderwidth=0, highlightthickness=0,
-            selectbackground="blue", selectforeground="white",
+            selectbackground="blue", selectforeground="white",  # Visible selection colors
             insertbackground="white", relief="flat", padx=0, pady=0,
             insertborderwidth=0, insertwidth=0, 
             highlightbackground="black", highlightcolor="black"
@@ -317,6 +326,7 @@ class MidiChordAnalyzer(tk.Tk):
         self.result_text.pack(fill="both", expand=True, padx=10, pady=10)
 
     def create_piano_image(self, octaves=2, key_width=40, key_height=150):
+        """Generate a piano keyboard image with highlighted drive tones (G, B, D, F)."""
         white_keys = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
         black_keys = ['C#', 'D#', '', 'F#', 'G#', 'A#', '']
         total_white_keys = 7 * octaves
@@ -396,7 +406,7 @@ class MidiChordAnalyzer(tk.Tk):
             self.run_analysis()
 
     def run_analysis(self):
-        # Use self.include_triads and self.sensitivity
+        """Execute full chord analysis pipeline and update UI."""
         min_duration = {"High": 0.1, "Medium": 0.5, "Low": 1.0}[self.sensitivity]
         self.analyzed_events = None
         self.processed_events = None
@@ -405,14 +415,16 @@ class MidiChordAnalyzer(tk.Tk):
             self.analyzed_events = events
 
             self.display_results()
-            # --- Generate entropy review text and store it ---
+            
+            # Generate entropy analysis for advanced statistics
             from io import StringIO
             entropy_buf = StringIO()
             analyzer = EntropyAnalyzer(self.analyzed_events, logger=lambda x: print(x, file=entropy_buf))
             analyzer.step_stage1_strengths(print_legend=True)
             self.entropy_review_text = entropy_buf.getvalue()
+            
+            # Enable UI features after successful analysis
             self.show_grid_btn.config(state="normal")
-            # Enable saving once an analysis exists (same behavior as Show Grid)
             try:
                 self.save_analysis_btn.config(state="normal")
             except Exception:
@@ -431,12 +443,12 @@ class MidiChordAnalyzer(tk.Tk):
             self.processed_events = None
 
     def open_settings(self):
-        """Open simple settings dialog and apply choices."""
+        """Open analysis settings dialog with algorithm options and sensitivity controls."""
         dialog = tk.Toplevel(self)
         dialog.title("Analysis Settings")
         dialog.geometry("420x480")
 
-        # Option variables
+        # Analysis algorithm toggles
         include_triads_var = tk.BooleanVar(value=self.include_triads)
         remove_repeats_var = tk.BooleanVar(value=self.remove_repeats)
         include_anacrusis_var = tk.BooleanVar(value=self.include_anacrusis)
@@ -444,7 +456,7 @@ class MidiChordAnalyzer(tk.Tk):
         neighbour_notes_var = tk.BooleanVar(value=getattr(self, 'neighbour_notes_searching', True))
         include_non_drive_var = tk.BooleanVar(value=self.include_non_drive_events)
 
-        # Slider for collapse sensitivity (1..5). Center (3) maps to the medium presets.
+        # Merging sensitivity slider (7 positions: 1=minimal merging, 7=aggressive merging)
         sensitivity_scale_var = tk.IntVar(value=getattr(self, 'collapse_sensitivity_pos', 3))
 
         pad_opts = dict(anchor="w", padx=12, pady=6)
@@ -459,15 +471,12 @@ class MidiChordAnalyzer(tk.Tk):
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
         ttk.Label(dialog, text="Merge similar events together (1=minimal merging, 7=high merging):").pack(anchor="w", padx=12, pady=(8, 0))
-        # Extended range: positions 1-2 are more restrictive than old position 1, position 3 = old position 1 (default)
         sens_scale = tk.Scale(dialog, from_=1, to=7, orient="horizontal", variable=sensitivity_scale_var)
         sens_scale.pack(fill="x", padx=12)
 
-        # Separator line
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
         ttk.Label(dialog, text="Note detail (1=fewer details, 5=more details):").pack(anchor="w", padx=12, pady=(8, 0))
-        # Convert current sensitivity to slider position: Low=1, Medium=3, High=5
         current_sensitivity = getattr(self, 'sensitivity', 'Medium')
         sensitivity_to_pos = {"Low": 1, "Medium": 3, "High": 5}
         detail_scale_var = tk.IntVar(value=sensitivity_to_pos.get(current_sensitivity, 3))
@@ -491,47 +500,41 @@ class MidiChordAnalyzer(tk.Tk):
             # Read merge slider position and persist it
             pos = int(sensitivity_scale_var.get())
             self.collapse_sensitivity_pos = pos
-            # Collapsing is always enabled
             self.collapse_similar_events = True
 
-            # Map slider position to merge parameter presets (7 positions)
-            # Position 3 = old position 1 (default), positions 1-2 are more restrictive than old position 1
+            # Configure merge algorithm parameters based on slider position (1-7)
             presets = {
-                1: {"jaccard": 0.95, "bass": 0.85, "bar": 0, "diff": 0},  # Minimal merging (very strict)
-                2: {"jaccard": 0.90, "bass": 0.80, "bar": 0, "diff": 0},  # Very low merging (extra strict)
-                3: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},  # Low merging (old position 1 - DEFAULT)
-                4: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},  # Medium-low (old position 2)
-                5: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},  # Medium (old position 3)
-                6: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},  # Medium-high (old position 4)
-                7: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},  # High merging (old position 5)
+                1: {"jaccard": 0.95, "bass": 0.85, "bar": 0, "diff": 0},  # Minimal merging
+                2: {"jaccard": 0.90, "bass": 0.80, "bar": 0, "diff": 0},  # Very low merging
+                3: {"jaccard": 0.85, "bass": 0.70, "bar": 0, "diff": 0},  # Low merging (DEFAULT)
+                4: {"jaccard": 0.70, "bass": 0.60, "bar": 1, "diff": 1},  # Medium-low merging
+                5: {"jaccard": 0.60, "bass": 0.50, "bar": 1, "diff": 1},  # Medium merging
+                6: {"jaccard": 0.55, "bass": 0.40, "bar": 1, "diff": 2},  # Medium-high merging
+                7: {"jaccard": 0.45, "bass": 0.25, "bar": 2, "diff": 2},  # High merging
             }
-            chosen = presets.get(pos, presets[3])  # Default to position 3 (old position 1)
+            chosen = presets.get(pos, presets[3])
             self.merge_jaccard_threshold = chosen["jaccard"]
             self.merge_bass_overlap = chosen["bass"]
             self.merge_bar_distance = chosen["bar"]
             self.merge_diff_max = chosen["diff"]
 
             dialog.destroy()
-            # If a score is loaded, re-run analysis so events are rebuilt and reprocessed with new merge params.
+            
+            # Re-run analysis with new settings if file is loaded
             if self.score:
                 self.run_analysis()
-            else:
-                # If no score but we have existing analyzed_events (e.g., loaded from file), refresh display.
-                if getattr(self, 'analyzed_events', None):
-                    try:
-                        # Re-display using current settings
-                        self.display_results()
-                    except Exception:
-                        pass
+            elif getattr(self, 'analyzed_events', None):
+                try:
+                    self.display_results()
+                except Exception:
+                    pass
 
-            # If a GridWindow is currently open, refresh it to reflect the new settings/analysis.
+            # Refresh grid window if open
             try:
                 gw = getattr(self, '_grid_window', None)
                 if gw and isinstance(gw, tk.Toplevel) and gw.winfo_exists():
-                    try:
-                        gw.destroy()
-                    except Exception:
-                        pass
+                    gw.destroy()
+                    self._grid_window = None
                     self._grid_window = None
                     # Reopen the grid if we still have analyzed events
                     if getattr(self, 'analyzed_events', None):
@@ -652,22 +655,29 @@ class MidiChordAnalyzer(tk.Tk):
 
 
     def analyze_musicxml(self, score, min_duration=0.5):
+        """
+        Main chord analysis algorithm.
+        
+        Processes MusicXML score through multiple detection phases:
+        1. Block chord detection from simultaneous notes
+        2. Arpeggio pattern recognition from melodic sequences
+        3. Anacrusis handling for melodic resolution notes
+        4. Neighbor/passing note detection
+        5. Event merging and post-processing
+        """
         flat_notes = list(score.flatten().getElementsByClass([note.Note, m21chord.Chord]))
 
-        # Collect time signatures using the flattened score so offsets are absolute
+        # Extract time signatures for bar/beat calculation
         time_signatures = []
         for ts in score.flatten().getElementsByClass(meter.TimeSignature):
-            # ts.offset on a flat stream is the absolute offset in quarter lengths
             offset = float(ts.offset)
             time_signatures.append((offset, int(ts.numerator), int(ts.denominator)))
 
-        # Ensure time signatures are sorted by offset
         time_signatures.sort(key=lambda x: x[0])
 
-        # If no explicit time signature found, default to 4/4 at start
+        # Ensure we have at least one time signature
         if not time_signatures:
             time_signatures = [(0.0, 4, 4)]
-        # If the first time signature doesn't start at 0, assume that meter applies from start
         elif time_signatures[0][0] > 0.0:
             first_num, first_den = time_signatures[0][1], time_signatures[0][2]
             time_signatures.insert(0, (0.0, first_num, first_den))
@@ -744,7 +754,7 @@ class MidiChordAnalyzer(tk.Tk):
         active_notes = set()
         active_pitches = set()
 
-        # --- Block chord event-building (as before) ---
+        # === PHASE 1: Block Chord Detection ===
         for i, time in enumerate(time_points):
 
                 
@@ -776,10 +786,10 @@ class MidiChordAnalyzer(tk.Tk):
                     print(f"DEBUG ANACRUSIS: After anacrusis - test_notes={sorted(test_notes)}")
 
             if len(test_notes) >= 3:
-                # DEBUG: Check for phantom notes at Bar 11, Beat 1
+                # Check for chord formation with sufficient note count
                 bar, beat, ts = offset_to_bar_beat(time)
                 
-                # DEBUG: Print what notes are being considered for chord detection
+                # Analyze note collection for chord detection
                 if bar == 3 and beat == 1:
                     print(f"DEBUG Bar {bar}, Beat {beat}: test_notes={sorted(test_notes)}, test_pitches={sorted(test_pitches)}")
                     print(f"  Active notes before anacrusis: {sorted(active_notes)}")
@@ -814,13 +824,13 @@ class MidiChordAnalyzer(tk.Tk):
                         events[key] = {"chords": set(), "basses": set(), "event_notes": set(test_notes), "event_pitches": set(test_pitches)}
                     events[key]["basses"].add(bass_note)
 
-        # --- Arpeggio event-building (sliding window) ---
+        # === PHASE 2: Arpeggio Pattern Detection ===
         if self.arpeggio_searching:
             # Build a list of all single notes (not chords) sorted by onset
             melodic_notes = [elem for elem in flat_notes if isinstance(elem, note.Note)]
             melodic_notes = sorted(melodic_notes, key=lambda n: n.offset)
             
-            # DEBUG: Show single notes in Bar 10-12 range
+            # Display single note analysis for specific range
             print("[ARPEGGIO DEBUG] Single notes in Bar 10-12 range:")
             for note_elem in melodic_notes:
                 bar, beat, ts = offset_to_bar_beat(note_elem.offset)
@@ -841,7 +851,7 @@ class MidiChordAnalyzer(tk.Tk):
                         continue
                     chords = self.detect_chords(window_pcs, debug=True)
                     if chords:
-                        # DEBUG: Show arpeggio window details for Bar 10-12 range
+                        # Display arpeggio analysis for specified range
                         bar, beat, ts = offset_to_bar_beat(window[0].offset)
                         if 10 <= bar <= 12:
                             print(f"[ARPEGGIO WINDOW] Window size {w}: notes at offsets {[n.offset for n in window]}")
@@ -889,8 +899,7 @@ class MidiChordAnalyzer(tk.Tk):
                             union = window_pcs | block_pcs
                             inter = window_pcs & block_pcs
                             jaccard = (len(inter) / len(union)) if union else 0.0
-                            # Debug when F (pc=5) involved to inspect why it may be ignored
-                            # (debug print removed)
+                            # Evaluate arpeggio acceptance criteria
                             # Accept arpeggio if Jaccard passes OR if the detected arpeggio chord's root is present in the simultaneous block_pcs
                             accept_arpeggio = False
                             if jaccard >= getattr(self, 'arpeggio_block_similarity_threshold', 0.5):
@@ -910,8 +919,8 @@ class MidiChordAnalyzer(tk.Tk):
                         else:
                             print(f"[ARPEGGIO OVERWRITE] {key}: {list(events[key]['event_notes'])} -> {list(window_pcs)}")
                         events[key]["chords"].update(chords)
-                        # Note: Arpeggios contribute chord detection but NOT bass detection
-                        # Bass should come from actual bass line or block chords, not melody
+                        # Arpeggios contribute to chord identification but not bass detection
+                        # Bass detection relies on actual bass line or block chord voicings
                         events[key]["event_notes"] = set(window_pcs)
                         events[key]["event_pitches"] = set(window_pitches)
                         print(f"[ARPEGGIO CREATE] {key}: chords={chords}, window_pcs={list(window_pcs)}")
@@ -923,7 +932,7 @@ class MidiChordAnalyzer(tk.Tk):
 
 
 
-        # --- Neighbour / passing-note detection ---
+        # === PHASE 3: Neighbor/Passing Note Detection ===
         # NEW ALGORITHM: Detect harmonic stability with melodic change
         # Look for cases where exactly one note changes while 2+ others are retained,
         # and BIND related events together at the foundational timing
@@ -979,7 +988,7 @@ class MidiChordAnalyzer(tk.Tk):
                             old_note = list(removed)[0]
                             new_note = list(added)[0]
                             
-                            # Test if {old_note, new_note, retained_notes} forms a valid seventh chord
+                            # Evaluate chord formation with note substitution
                             test_pcs = {old_note, new_note} | retained
                             
                             # Look for passing notes within the duration of retained notes that might complete better chords
@@ -999,7 +1008,7 @@ class MidiChordAnalyzer(tk.Tk):
                                 if retained_start <= st < retained_end and retained_start < en <= retained_end:
                                     passing_pcs.update({p % 12 for p in prs})
                             
-                            # Test with passing notes included
+                            # Include passing notes for enhanced chord analysis
                             enhanced_test_pcs = test_pcs | passing_pcs
                             
                             if len(enhanced_test_pcs) >= 4:  # Need at least 4 notes for seventh chord
@@ -1060,8 +1069,6 @@ class MidiChordAnalyzer(tk.Tk):
 
         return self._process_detected_events(events)
 
-# ...rest of your code unchanged...
-
     def _is_clean_stack(self, chord_name: str, event_notes: set[int]) -> bool:
         """
         Returns True if all required chord notes are present and any extra notes are only outside the stack (not between lowest and highest chord tones, exclusive).
@@ -1118,11 +1125,10 @@ class MidiChordAnalyzer(tk.Tk):
     def _process_detected_events(self, events):
         """Process raw detected events into filtered events ready for display.
 
-        Behavior:
-        - Choose highest-priority chord per root when multiple chords agree.
-        - Optionally collapse adjacent similar events into a single column when
-          `self.collapse_similar_events` is True. Collapsing uses a Jaccard-like
-          similarity and merges chords choosing the strongest-priority chord per root.
+        Post-processing pipeline:
+        1. Deduplicate chords by priority (higher priority wins per root)
+        2. Optionally merge similar adjacent events using Jaccard similarity
+        3. Apply repeat removal and filtering based on user settings
         """
         
 
@@ -1224,7 +1230,7 @@ class MidiChordAnalyzer(tk.Tk):
                 prev_notes_set = notes_set
                 prev_pitches_set = pitches_set
 
-        # Optionally collapse adjacent similar events (merge columns)
+        # === PHASE 4: Event Merging and Post-Processing ===
         if getattr(self, 'collapse_similar_events', False) and final_filtered_events:
             merged: List[Tuple[Tuple[int,int,str], Dict[str, Any], Any]] = []
             for ev in final_filtered_events:
@@ -1316,10 +1322,11 @@ class MidiChordAnalyzer(tk.Tk):
         return output_lines, filtered_events
 
     def detect_chords(self, semitones, debug: bool = False):
-        """Detect chord names from a set of pitch-classes (semitones).
-
-        If debug=True, print intermediate normalization and matched patterns to help
-        diagnose why particular chord names were chosen.
+        """
+        Detect chord names from pitch classes using pattern matching.
+        
+        Tests all possible roots and matches against known chord patterns.
+        Includes special handling for "no3" chords to verify third presence.
         """
         if len(semitones) < 3:
             return []
@@ -1410,9 +1417,12 @@ class MidiChordAnalyzer(tk.Tk):
         return chords_found
 
     def semitone_to_note(self, semitone):
+        """Convert semitone number to note name, preferring natural notes."""
+        # First try natural notes (single character)
         for note in NOTE_TO_SEMITONE:
             if NOTE_TO_SEMITONE[note] == semitone and len(note) == 1:
                 return note
+        # Fallback to any matching note
         return next((note for note, val in NOTE_TO_SEMITONE.items() if val == semitone), "C")
         
     def save_analysis_txt(self):
@@ -2034,7 +2044,13 @@ class EmbeddedMidiKeyboard:
             self.result_label.config(text="No matching chords found.")
 
 
-class GridWindow(tk.Toplevel):#
+class GridWindow(tk.Toplevel):
+    """
+    Visual timeline display of chord analysis results.
+    
+    Shows chord progressions in a grid format with color-coded chord strengths,
+    entropy analysis, and interactive features for detailed analysis review.
+    """
     
     
     SUPERSCRIPT_MAP = {
@@ -2915,7 +2931,7 @@ class GridWindow(tk.Toplevel):#
         # Draw resolution arrows AFTER grid lines but BEFORE chord shapes (so arrows appear behind shapes)
         if self.show_resolutions_var.get():
             # First, collect all chord positions
-            temp_positions = []
+            chord_positions = []
             for col, event_key in enumerate(self.sorted_events):
                 event_data = self.events[event_key]
                 chords = event_data.get("chords", set())
@@ -2930,10 +2946,10 @@ class GridWindow(tk.Toplevel):#
                     row = self.root_to_row[root]
                     x = self.PADDING + col * self.CELL_SIZE + self.CELL_SIZE // 2
                     y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
-                    temp_positions.append((col, row, x, y, chord))
+                    chord_positions.append((col, row, x, y, chord))
             
             # Draw arrows from grid centers (will be hidden behind chord shapes)
-            pos_dict = {(col, row): (x, y, chord) for col, row, x, y, chord in temp_positions}
+            pos_dict = {(col, row): (x, y, chord) for col, row, x, y, chord in chord_positions}
             end_offset = self.CELL_SIZE * 0.75  # Stop at upper-left area of target square
             for (col, row), (x1, y1, chord1) in pos_dict.items():
                 diag_pos = (col + 1, row + 1)
@@ -3095,9 +3111,11 @@ from math import log2
 
 class EntropyAnalyzer:
     """
-    Phase 7 entropy analysis on analyzed_events from MidiChordAnalyzer.
-    Produces both human-readable per-event chord strength listing (Stage 1)
-    and numeric-sequence entropy calculation (Stage 2).
+    Advanced statistical analysis of chord progressions.
+    
+    Provides two-stage analysis:
+    1. Chord strength assessment based on harmonic complexity
+    2. Information entropy calculation for progression predictability
     """
     NOTE_TO_SEMITONE = {
         'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4,
