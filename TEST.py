@@ -47,6 +47,19 @@ def resource_path(relative_path: str) -> str:
     base_path = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
     return os.path.join(base_path, relative_path)
 
+def debug_log(message: str) -> None:
+    """Write debug messages to both console and log file for packaged executable debugging."""
+    print(message)  # Console output
+    try:
+        # Also write to a log file in the same directory as the executable
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "midi_debug.log")
+        with open(log_file, "a", encoding="utf-8") as f:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception as e:
+        print(f"Failed to write to log file: {e}")
+
 # Display symbols for chord analysis visualization
 CLEAN_STACK_SYMBOL = "✅"  # Indicates clean stacked chord voicing
 ROOT2_SYMBOL = "²"         # Second inversion marker
@@ -1968,9 +1981,9 @@ class EmbeddedMidiKeyboard:
             # Method 1: Direct mido call
             if mido is not None:
                 ports = mido.get_input_names()
-                print(f"MIDI Debug: Direct mido.get_input_names() returned: {ports}")
+                debug_log(f"MIDI Debug: Direct mido.get_input_names() returned: {ports}")
             else:
-                print("MIDI Debug: mido is None")
+                debug_log("MIDI Debug: mido is None")
             
             if not ports:
                 # Method 2: Try to initialize backend explicitly
@@ -1979,9 +1992,9 @@ class EmbeddedMidiKeyboard:
                     # Force backend initialization
                     backend = mido.backends.rtmidi.Backend()
                     ports = backend.get_input_names()
-                    print(f"MIDI Debug: Backend.get_input_names() returned: {ports}")
+                    debug_log(f"MIDI Debug: Backend.get_input_names() returned: {ports}")
                 except Exception as e:
-                    print(f"MIDI Debug: Backend initialization failed: {e}")
+                    debug_log(f"MIDI Debug: Backend initialization failed: {e}")
             
             if not ports:
                 # Method 3: Try rtmidi directly
@@ -1989,26 +2002,26 @@ class EmbeddedMidiKeyboard:
                     import rtmidi
                     midi_in = rtmidi.MidiIn()
                     port_count = midi_in.get_port_count()
-                    print(f"MIDI Debug: Direct rtmidi found {port_count} ports")
+                    debug_log(f"MIDI Debug: Direct rtmidi found {port_count} ports")
                     
                     for i in range(port_count):
                         port_name = midi_in.get_port_name(i)
                         ports.append(port_name)
-                        print(f"MIDI Debug: Port {i}: {port_name}")
+                        debug_log(f"MIDI Debug: Port {i}: {port_name}")
                     
                     del midi_in  # Clean up
                 except Exception as e:
-                    print(f"MIDI Debug: Direct rtmidi failed: {e}")
-                    
-        except Exception as e:
-            print(f"MIDI Debug: All port detection methods failed: {e}")
+                    debug_log(f"MIDI Debug: Direct rtmidi failed: {e}")
         
-        print(f"MIDI Debug: Final port list: {ports}")
+        except Exception as e:
+            debug_log(f"MIDI Debug: All port detection methods failed: {e}")
+        
+        debug_log(f"MIDI Debug: Final port list: {ports}")
         return ports
 
     def _delayed_midi_init(self):
         """Initialize MIDI ports after a small delay - helps with packaged executables."""
-        print("MIDI Debug: Starting delayed MIDI initialization...")
+        debug_log("MIDI Debug: Starting delayed MIDI initialization...")
         self.midi_ports = self._get_midi_ports_safe()
         self.midi_dropdown['values'] = self.midi_ports
         if self.midi_ports:
@@ -3612,5 +3625,10 @@ class EntropyAnalyzer:
     # Legend print handled in step_stage1_strengths
 
 if __name__ == "__main__":
+    debug_log("=== Application Starting ===")
+    debug_log(f"Python version: {sys.version}")
+    debug_log(f"Platform: {platform.platform()}")
+    debug_log(f"MIDO_AVAILABLE: {MIDO_AVAILABLE}")
+    debug_log(f"PYGAME_AVAILABLE: {PYGAME_AVAILABLE}")
     app = MidiChordAnalyzer()
     app.mainloop()
