@@ -26,6 +26,7 @@ from music21 import converter, note, chord as m21chord, meter, stream
 # Import MIDI library at top level for PyInstaller compatibility
 try:
     import mido
+    import rtmidi  # Explicitly import the backend for PyInstaller
     MIDO_AVAILABLE = True
 except ImportError:
     mido = None
