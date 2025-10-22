@@ -1806,7 +1806,10 @@ class EmbeddedMidiKeyboard:
         midi_frame.pack(pady=5)
         tk.Label(midi_frame, text="MIDI Input:", font=("Segoe UI", 10), fg="white", bg="black").pack(side="left", padx=(0,5))
         if MIDO_AVAILABLE:
-            self.midi_ports = mido.get_input_names()
+            # Enhanced MIDI port detection for packaged executables
+            # Small delay to allow MIDI system to initialize
+            self.parent.after(100, self._delayed_midi_init)
+            self.midi_ports = []  # Will be populated by delayed init
         else:
             self.midi_ports = []
         self.midi_port_var = tk.StringVar()
@@ -1814,6 +1817,12 @@ class EmbeddedMidiKeyboard:
         if self.midi_ports:
             self.midi_port_var.set(self.midi_ports[0])
         self.midi_dropdown.pack(side="left")
+        
+        # Add refresh button for MIDI ports
+        refresh_btn = tk.Button(midi_frame, text="↻", command=self._refresh_midi_ports, 
+                               font=("Segoe UI", 8), width=3, height=1)
+        refresh_btn.pack(side="left", padx=(5,0))
+        
         # Bind MIDI port change
         try:
             self.midi_dropdown.bind("<<ComboboxSelected>>", self._on_midi_port_change)
@@ -1947,13 +1956,94 @@ class EmbeddedMidiKeyboard:
                 pass
         self.start_midi_listener(port_name=selected_port)
 
+    def _get_midi_ports_safe(self):
+        """
+        Enhanced MIDI port detection that works better in packaged executables.
+        Tries multiple approaches and includes debugging.
+        """
+        global mido  # Ensure we can access the global mido variable
+        ports = []
+        
+        try:
+            # Method 1: Direct mido call
+            if mido is not None:
+                ports = mido.get_input_names()
+                print(f"MIDI Debug: Direct mido.get_input_names() returned: {ports}")
+            else:
+                print("MIDI Debug: mido is None")
+            
+            if not ports:
+                # Method 2: Try to initialize backend explicitly
+                try:
+                    import mido.backends.rtmidi
+                    # Force backend initialization
+                    backend = mido.backends.rtmidi.Backend()
+                    ports = backend.get_input_names()
+                    print(f"MIDI Debug: Backend.get_input_names() returned: {ports}")
+                except Exception as e:
+                    print(f"MIDI Debug: Backend initialization failed: {e}")
+            
+            if not ports:
+                # Method 3: Try rtmidi directly
+                try:
+                    import rtmidi
+                    midi_in = rtmidi.MidiIn()
+                    port_count = midi_in.get_port_count()
+                    print(f"MIDI Debug: Direct rtmidi found {port_count} ports")
+                    
+                    for i in range(port_count):
+                        port_name = midi_in.get_port_name(i)
+                        ports.append(port_name)
+                        print(f"MIDI Debug: Port {i}: {port_name}")
+                    
+                    del midi_in  # Clean up
+                except Exception as e:
+                    print(f"MIDI Debug: Direct rtmidi failed: {e}")
+                    
+        except Exception as e:
+            print(f"MIDI Debug: All port detection methods failed: {e}")
+        
+        print(f"MIDI Debug: Final port list: {ports}")
+        return ports
+
+    def _delayed_midi_init(self):
+        """Initialize MIDI ports after a small delay - helps with packaged executables."""
+        print("MIDI Debug: Starting delayed MIDI initialization...")
+        self.midi_ports = self._get_midi_ports_safe()
+        self.midi_dropdown['values'] = self.midi_ports
+        if self.midi_ports:
+            self.midi_port_var.set(self.midi_ports[0])
+            # Auto-start listener with first port
+            try:
+                self.start_midi_listener(port_name=self.midi_ports[0])
+            except Exception as e:
+                print(f"MIDI Debug: Failed to start listener during delayed init: {e}")
+        print("MIDI Debug: Delayed MIDI initialization complete.")
+
+    def _refresh_midi_ports(self):
+        """Refresh the MIDI port list - useful for packaged executables."""
+        print("MIDI Debug: Refreshing port list...")
+        if MIDO_AVAILABLE:
+            self.midi_ports = self._get_midi_ports_safe()
+            self.midi_dropdown['values'] = self.midi_ports
+            if self.midi_ports:
+                self.midi_port_var.set(self.midi_ports[0])
+                # Auto-start listener with first port
+                try:
+                    self.start_midi_listener(port_name=self.midi_ports[0])
+                except Exception as e:
+                    print(f"MIDI Debug: Failed to start listener after refresh: {e}")
+            else:
+                self.midi_port_var.set("")
+            print(f"MIDI Debug: Refreshed port list: {self.midi_ports}")
+
     def start_midi_listener(self, port_name=None):
         if not MIDO_AVAILABLE:
             print("mido not available: MIDI input disabled")
             return
 
         if not port_name:
-            ports = mido.get_input_names()
+            ports = self._get_midi_ports_safe()
             if not ports:
                 print("No MIDI input ports found.")
                 return
