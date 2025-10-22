@@ -61,7 +61,9 @@ jobs:
             --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
+            --hidden-import=pygame --hidden-import=pygame.midi \
+            --collect-all mido --collect-all rtmidi --icon assets/myicon.icns >> build-app.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
           fi
@@ -161,7 +163,9 @@ jobs:
             --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
+            --hidden-import=pygame --hidden-import=pygame.midi \
+            --collect-all mido --collect-all rtmidi --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
           fi
@@ -238,7 +242,9 @@ jobs:
             --add-data "assets/ico.png;assets" `
             --add-data "assets/fonts;assets/fonts" `
             --add-data "assets/images;assets/images" `
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido `
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi `
+            --hidden-import=pygame --hidden-import=pygame.midi `
+            --collect-all mido --collect-all rtmidi `
             --icon assets/myicon.ico 2>&1 | Tee-Object -FilePath build-exe-windows.log
           if (Test-Path dist/DriveAnalyzer.exe) {
             Write-Output "Build successful - DriveAnalyzer.exe created"
