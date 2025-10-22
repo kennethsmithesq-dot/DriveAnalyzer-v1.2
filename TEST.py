@@ -23,6 +23,23 @@ from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.lib.colors import black, HexColor
 from music21 import converter, note, chord as m21chord, meter, stream
 
+# Import MIDI library at top level for PyInstaller compatibility
+try:
+    import mido
+    MIDO_AVAILABLE = True
+except ImportError:
+    mido = None
+    MIDO_AVAILABLE = False
+
+# Import pygame for MIDI output at top level for PyInstaller compatibility
+try:
+    import pygame
+    import pygame.midi
+    PYGAME_AVAILABLE = True
+except ImportError:
+    pygame = None
+    PYGAME_AVAILABLE = False
+
 
 def resource_path(relative_path: str) -> str:
     """Return absolute path to resource for both development and PyInstaller builds."""
@@ -1671,24 +1688,27 @@ class EmbeddedMidiKeyboard:
             pass
 
         # Try to initialize pygame.midi for sound output (optional)
-        try:
-            import pygame
-            import pygame.midi
-            pygame.midi.init()
-            self.pygame = pygame
-            self.pygame_midi = pygame.midi
+        if PYGAME_AVAILABLE:
             try:
-                default_out = pygame.midi.get_default_output_id()
-            except Exception:
-                default_out = None
-            if default_out is not None and default_out >= 0:
+                pygame.midi.init()
+                self.pygame = pygame
+                self.pygame_midi = pygame.midi
                 try:
-                    self.midi_out = pygame.midi.Output(default_out)
+                    default_out = pygame.midi.get_default_output_id()
                 except Exception:
+                    default_out = None
+                if default_out is not None and default_out >= 0:
+                    try:
+                        self.midi_out = pygame.midi.Output(default_out)
+                    except Exception:
+                        self.midi_out = None
+                else:
                     self.midi_out = None
-            else:
+            except Exception:
+                self.pygame = None
+                self.pygame_midi = None
                 self.midi_out = None
-        except Exception:
+        else:
             self.pygame = None
             self.pygame_midi = None
             self.midi_out = None
@@ -1784,10 +1804,9 @@ class EmbeddedMidiKeyboard:
         midi_frame = tk.Frame(self.parent, bg="black")
         midi_frame.pack(pady=5)
         tk.Label(midi_frame, text="MIDI Input:", font=("Segoe UI", 10), fg="white", bg="black").pack(side="left", padx=(0,5))
-        try:
-            import mido
+        if MIDO_AVAILABLE:
             self.midi_ports = mido.get_input_names()
-        except Exception:
+        else:
             self.midi_ports = []
         self.midi_port_var = tk.StringVar()
         self.midi_dropdown = ttk.Combobox(midi_frame, textvariable=self.midi_port_var, values=self.midi_ports, state="readonly", width=40)
@@ -1928,9 +1947,7 @@ class EmbeddedMidiKeyboard:
         self.start_midi_listener(port_name=selected_port)
 
     def start_midi_listener(self, port_name=None):
-        try:
-            import mido
-        except Exception:
+        if not MIDO_AVAILABLE:
             print("mido not available: MIDI input disabled")
             return
 
@@ -2656,7 +2673,8 @@ class GridWindow(tk.Toplevel):
             page_grid_cols = max(1, int((width - margin_left - margin_right) // cell_size))
             num_pages = (grid_cols + page_grid_cols - 1) // page_grid_cols
 
-            radius = int(cell_size * 0.85 / 2)
+            radius = int(cell_size * 0.65 / 2)  # Reduced from 0.85 to make triangles smaller
+            circle_radius = int(cell_size * 0.80 / 2)  # Larger radius for circles only in PDF
 
             entropies_all = {ek: self.compute_entropy(event_key=ek) for ek in self.sorted_events}
 
@@ -2708,7 +2726,7 @@ class GridWindow(tk.Toplevel):
                             pos_dict[(col_idx, row)] = (x, y, chord)
 
                     # Arrows start from grid center and appear behind chord shapes
-                    end_offset = cell_size * 0.75  # Stop at upper-left area of target square
+                    end_offset = cell_size * 0.55  # Reduced from 0.75 to make arrows longer
                     for (col, row), (x1, y1, chord1) in pos_dict.items():
                         diag_pos = (col + 1, row + 1)
                         if diag_pos in pos_dict:
@@ -2733,7 +2751,7 @@ class GridWindow(tk.Toplevel):
                             c.line(start_x, start_y, end_x, end_y)
                             
                             # Draw arrowhead
-                            arrow_size = 5
+                            arrow_size = 6  # Increased to make PDF arrowheads more prominent
                             angle = math.atan2(dy_norm, dx_norm)
                             left_angle = angle + math.pi / 6
                             right_angle = angle - math.pi / 6
@@ -2791,7 +2809,7 @@ class GridWindow(tk.Toplevel):
                             path.close()
                             c.drawPath(path, stroke=1, fill=1 if use_color else 0)
                         else:
-                            c.circle(x, y, radius, stroke=1, fill=1 if use_color else 0)
+                            c.circle(x, y, circle_radius, stroke=1, fill=1 if use_color else 0)
 
                         if chord_type not in ("maj", "min"):
                             function_label = chord[len(root):] or "–"
@@ -2837,11 +2855,23 @@ class GridWindow(tk.Toplevel):
                         bx = margin_left + col_idx * cell_size + cell_size / 2
                         by = height - (margin_y + brow * cell_size + cell_size / 2)
                         dot_radius = 2.5
+                        
+                        # Determine which radius to use based on chord type at this position
+                        # Check if there's a chord at this position to determine shape size
+                        chords_at_position = [chord for chord in event_data.get("chords", []) 
+                                            if self.get_root(chord) == bass_root]
+                        if chords_at_position:
+                            chord = chords_at_position[0]
+                            chord_type = self.classify_chord_type(chord)
+                            shape_radius = circle_radius if chord_type not in ("maj", "min") else radius
+                        else:
+                            shape_radius = radius  # Default to triangle radius if no chord
+                        
                         # Position dot at bottom edge of shape, matching tkinter positioning
                         # PDF coordinates: Y increases upward, tkinter increases downward
                         # In tkinter: by + radius places dot at bottom of shape
                         # In PDF: by - radius places dot at bottom of shape
-                        dot_y_position = by - radius
+                        dot_y_position = by - shape_radius
                         c.setFillColor(black)
                         c.circle(bx, dot_y_position, dot_radius, fill=1, stroke=0)
 
@@ -2909,7 +2939,7 @@ class GridWindow(tk.Toplevel):
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_grid(self):
-        radius = int(self.CELL_SIZE * 0.85 / 2)
+        radius = int(self.CELL_SIZE * 0.65 / 2)  # Reduced from 0.85 to make triangles smaller
 
         def beautify_note_name(note):
             return note.replace("b", "♭").replace("#", "♯")
@@ -2950,7 +2980,7 @@ class GridWindow(tk.Toplevel):
             
             # Draw arrows from grid centers (will be hidden behind chord shapes)
             pos_dict = {(col, row): (x, y, chord) for col, row, x, y, chord in chord_positions}
-            end_offset = self.CELL_SIZE * 0.75  # Stop at upper-left area of target square
+            end_offset = self.CELL_SIZE * 0.55  # Reduced from 0.75 to make arrows longer
             for (col, row), (x1, y1, chord1) in pos_dict.items():
                 diag_pos = (col + 1, row + 1)
                 if diag_pos in pos_dict:
@@ -2967,7 +2997,7 @@ class GridWindow(tk.Toplevel):
                     start_y = y1
                     end_x = x2 - dx_norm * end_offset
                     end_y = y2 - dy_norm * end_offset
-                    self.canvas.create_line(start_x, start_y, end_x, end_y, arrow=tk.LAST, fill="black", width=2)
+                    self.canvas.create_line(start_x, start_y, end_x, end_y, arrow=tk.LAST, fill="black", width=3)
 
         self.chord_positions.clear()
 
