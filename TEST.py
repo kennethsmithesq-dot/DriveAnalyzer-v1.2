@@ -1,5 +1,5 @@
 """
-MIDI Chord Analyzer - Advanced Music Theory Analysis Tool
+XML Chord Analyzer - Advanced Music Theory Analysis Tool
 
 A comprehensive application for analyzing chord progressions and harmonic structures
 from MusicXML files. Features block chord detection, arpeggio analysis, anacrusis
@@ -1999,42 +1999,20 @@ class EmbeddedMidiKeyboard:
     def _play_note(self, semitone, velocity=127):
         note_num = 60 + semitone
         
-        # Send MIDI data
+        # Send MIDI data only (clean approach like midiv3)
         if getattr(self, 'midi_out', None):
             try:
                 self.midi_out.note_on(note_num, velocity)
             except Exception:
                 pass
-        
-        # Also generate audio synthesis for immediate playback
-        if PYGAME_AVAILABLE and hasattr(self, 'active_notes'):
-            try:
-                frequency = self._midi_to_frequency(note_num)
-                volume = velocity / 127.0 * 0.3  # Scale volume
-                sound = self._generate_sine_wave(frequency, 2.0, volume)  # 2 second duration
-                if sound:
-                    channel = sound.play()
-                    self.active_notes[semitone] = channel
-            except Exception:
-                pass  # Fallback silently if synthesis fails
 
     def _stop_note(self, semitone):
         note_num = 60 + semitone
         
-        # Send MIDI stop
+        # Send MIDI stop only
         if getattr(self, 'midi_out', None):
             try:
                 self.midi_out.note_off(note_num, 0)
-            except Exception:
-                pass
-        
-        # Stop synthesized audio
-        if hasattr(self, 'active_notes') and semitone in self.active_notes:
-            try:
-                channel = self.active_notes[semitone]
-                if channel:
-                    channel.stop()
-                del self.active_notes[semitone]
             except Exception:
                 pass
 
@@ -3308,13 +3286,13 @@ class DriveStrengthParametersDialog:
         "rule1_bass_support": 20,
         "rule2_tonic_dominant": 50,
         "rule2_selected_tonic": "No Tonic",  # Default: disabled
-        "rule3_root_repetition": 20,
-        "rule4_resolution_max": 50,
-        "rule5_clean_voicing": 50,
-        "rule6_same_chord": 33,
-        "rule6_dominant_prep": 50,
-        "rule7_root_doubled": 33,
-        "rule7_root_tripled": 50
+        "rule3_root_repetition": 2,
+        "rule4_resolution_max": 10,
+        "rule5_clean_voicing": 10,
+        "rule6_same_chord": 5,
+        "rule6_dominant_prep": 10,
+        "rule7_root_doubled": 5,
+        "rule7_root_tripled": 10
     }
     
     def __init__(self, parent, current_strength_map=None, current_rule_params=None):
@@ -3872,16 +3850,18 @@ class EntropyAnalyzer:
         # Use provided parameters or defaults
         self.strength_map = strength_map if strength_map is not None else self._STRENGTH_MAP.copy()
         
-        # Default rule parameters
+        # Default rule parameters (synchronized with dialog defaults)
         default_rule_params = {
             "rule1_bass_support": 20,
-            "rule3_root_repetition": 2,
-            "rule4_resolution_max": 10,
-            "rule5_clean_voicing": 10,
-            "rule6_same_chord": 5,
-            "rule6_dominant_prep": 10,
-            "rule7_root_doubled": 5,
-            "rule7_root_tripled": 10
+            "rule2_tonic_dominant": 50,
+            "rule2_selected_tonic": "No Tonic",  # Default: disabled
+            "rule3_root_repetition": 20,
+            "rule4_resolution_max": 50,
+            "rule5_clean_voicing": 50,
+            "rule6_same_chord": 33,
+            "rule6_dominant_prep": 50,
+            "rule7_root_doubled": 33,
+            "rule7_root_tripled": 50
         }
         self.rule_params = rule_params if rule_params is not None else default_rule_params
 
