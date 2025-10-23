@@ -219,22 +219,7 @@ class MidiChordAnalyzer(tk.Tk):
             beats = offset / beat_len
             return int(beats // num) + 1, int(beats % num) + 1, f"{num}/{denom}"
 
-        print("Note List:")
-        for elem in flat_notes:
-            if isinstance(elem, note.Note):
-                name = elem.nameWithOctave
-                midi = elem.pitch.midi
-                dur = elem.quarterLength
-                offset = elem.offset
-                bar, beat, ts = offset_to_bar_beat(offset)
-                print(f"Note: {name} (MIDI {midi}) | Bar {bar}, Beat {beat} ({ts}) | Duration: {dur}")
-            elif isinstance(elem, m21chord.Chord):
-                names = [p.nameWithOctave for p in elem.pitches]
-                midis = [p.midi for p in elem.pitches]
-                dur = elem.quarterLength
-                offset = elem.offset
-                bar, beat, ts = offset_to_bar_beat(offset)
-                print(f"Chord: {names} (MIDIs {midis}) | Bar {bar}, Beat {beat} ({ts}) | Duration: {dur}")
+
     def __init__(self):
         super().__init__()
         self.title("🎵 MIDI Drive Analyzer")
@@ -274,6 +259,10 @@ class MidiChordAnalyzer(tk.Tk):
         self.score = None
         self.analyzed_events = None
         self.processed_events = None
+        
+        # Drive strength parameters (configurable via dialog)
+        self.custom_strength_map = None
+        self.custom_rule_params = None
 
         self.build_ui()
         self.show_splash()
@@ -418,7 +407,14 @@ class MidiChordAnalyzer(tk.Tk):
         if not self.analyzed_events:
             print("No analyzed events available for entropy preview.")
             return
-        ea = EntropyAnalyzer(self.analyzed_events, symbol_mode=mode, base=base, logger=print)
+        ea = EntropyAnalyzer(
+            self.analyzed_events, 
+            symbol_mode=mode, 
+            base=base, 
+            logger=print,
+            strength_map=self.custom_strength_map,
+            rule_params=self.custom_rule_params
+        )
         ea.register_step("Stage 1: Strength listing", lambda EA: EA.step_stage1_strengths(print_legend=False))
         ea.register_step("Stage 2: Strength entropy", lambda EA: EA.step_stage2_strength_entropy())
         ea.preview()
@@ -450,7 +446,12 @@ class MidiChordAnalyzer(tk.Tk):
             # Generate entropy analysis for advanced statistics
             from io import StringIO
             entropy_buf = StringIO()
-            analyzer = EntropyAnalyzer(self.analyzed_events, logger=lambda x: print(x, file=entropy_buf))
+            analyzer = EntropyAnalyzer(
+                self.analyzed_events, 
+                logger=lambda x: print(x, file=entropy_buf),
+                strength_map=self.custom_strength_map,
+                rule_params=self.custom_rule_params
+            )
             analyzer.step_stage1_strengths(print_legend=True)
             self.entropy_review_text = entropy_buf.getvalue()
             
@@ -477,7 +478,17 @@ class MidiChordAnalyzer(tk.Tk):
         """Open analysis settings dialog with algorithm options and sensitivity controls."""
         dialog = tk.Toplevel(self)
         dialog.title("Analysis Settings")
-        dialog.geometry("420x480")
+        dialog.geometry("420x540")
+        dialog.configure(bg="white")  # Set white background
+
+        # Configure styles for settings dialog
+        from tkinter import ttk
+        style = ttk.Style()
+        style.configure("Settings.TCheckbutton", background="white", foreground="black")
+        style.configure("Settings.TLabel", background="white", foreground="black")
+        style.configure("Settings.TFrame", background="white")
+        style.configure("Settings.TButton", background="white", foreground="black")
+        style.configure("Settings.TSeparator", background="white")
 
         # Analysis algorithm toggles
         include_triads_var = tk.BooleanVar(value=self.include_triads)
@@ -491,28 +502,58 @@ class MidiChordAnalyzer(tk.Tk):
         sensitivity_scale_var = tk.IntVar(value=getattr(self, 'collapse_sensitivity_pos', 3))
 
         pad_opts = dict(anchor="w", padx=12, pady=6)
-        ttk.Checkbutton(dialog, text="Include triads", variable=include_triads_var).pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Include anacrusis", variable=include_anacrusis_var).pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Arpeggio searching", variable=arpeggio_searching_var).pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Neighbour notes", variable=neighbour_notes_var).pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Remove repeated patterns", variable=remove_repeats_var).pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Include non-drive events", variable=include_non_drive_var).pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Include triads", variable=include_triads_var, style="Settings.TCheckbutton").pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Include anacrusis", variable=include_anacrusis_var, style="Settings.TCheckbutton").pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Arpeggio searching", variable=arpeggio_searching_var, style="Settings.TCheckbutton").pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Neighbour notes", variable=neighbour_notes_var, style="Settings.TCheckbutton").pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Remove repeated patterns", variable=remove_repeats_var, style="Settings.TCheckbutton").pack(**pad_opts)
+        ttk.Checkbutton(dialog, text="Include non-drive events", variable=include_non_drive_var, style="Settings.TCheckbutton").pack(**pad_opts)
 
         # Separator line
-        ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
+        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
 
-        ttk.Label(dialog, text="Merge similar events together (1=minimal merging, 7=high merging):").pack(anchor="w", padx=12, pady=(8, 0))
-        sens_scale = tk.Scale(dialog, from_=1, to=7, orient="horizontal", variable=sensitivity_scale_var)
+        ttk.Label(dialog, text="Merge similar events together (1=minimal merging, 7=high merging):", style="Settings.TLabel").pack(anchor="w", padx=12, pady=(8, 0))
+        sens_scale = tk.Scale(dialog, from_=1, to=7, orient="horizontal", variable=sensitivity_scale_var, bg="white")
         sens_scale.pack(fill="x", padx=12)
 
-        ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
+        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
 
-        ttk.Label(dialog, text="Note detail (1=fewer details, 5=more details):").pack(anchor="w", padx=12, pady=(8, 0))
+        ttk.Label(dialog, text="Note detail (1=fewer details, 5=more details):", style="Settings.TLabel").pack(anchor="w", padx=12, pady=(8, 0))
         current_sensitivity = getattr(self, 'sensitivity', 'Medium')
         sensitivity_to_pos = {"Low": 1, "Medium": 3, "High": 5}
         detail_scale_var = tk.IntVar(value=sensitivity_to_pos.get(current_sensitivity, 3))
-        detail_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=detail_scale_var)
+        detail_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=detail_scale_var, bg="white")
         detail_scale.pack(fill="x", padx=12)
+        
+        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
+        
+        # Drive Strength Configuration button
+        strength_btn_frame = ttk.Frame(dialog, style="Settings.TFrame")
+        strength_btn_frame.pack(fill="x", padx=12, pady=(8, 12))
+        
+        def open_strength_dialog():
+            strength_dialog = DriveStrengthParametersDialog(
+                dialog, 
+                self.custom_strength_map, 
+                self.custom_rule_params
+            )
+            dialog.wait_window(strength_dialog.window)
+            if strength_dialog.result:
+                self.custom_strength_map = strength_dialog.new_strength_map
+                self.custom_rule_params = strength_dialog.new_rule_params
+                # Re-run analysis if data is loaded
+                if getattr(self, 'analyzed_events', None):
+                    try:
+                        self.display_results()
+                    except Exception:
+                        pass
+        
+        ttk.Button(
+            strength_btn_frame, 
+            text="Drive Strength Configuration...", 
+            command=open_strength_dialog,
+            style="Settings.TButton"
+        ).pack(anchor="w")
 
         def apply_settings():
             # Apply basic boolean/text settings
@@ -579,7 +620,7 @@ class MidiChordAnalyzer(tk.Tk):
         # Separator line
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
 
-        ttk.Button(dialog, text="Apply", command=apply_settings).pack(pady=(6, 12))
+        ttk.Button(dialog, text="Apply", command=apply_settings, style="Settings.TButton").pack(pady=(6, 12))
 
     def display_results(self, lines: list[str] = None):
         self.result_text.config(state="normal")
@@ -804,33 +845,20 @@ class MidiChordAnalyzer(tk.Tk):
             test_notes = set(active_notes)
             test_pitches = set(active_pitches)
             if self.include_anacrusis:
-                bar, beat, ts = offset_to_bar_beat(time)
-                if bar == 3 and beat == 1:
-                    print(f"DEBUG ANACRUSIS: Before anacrusis - test_notes={sorted(test_notes)}")
                 for s_start, s_end, s_pitch in single_notes:
                     if s_end == time and (s_pitch % 12) not in test_notes:
-                        if bar == 3 and beat == 1:
-                            print(f"  Adding anacrusis note: {s_pitch} (pc={s_pitch % 12}) ended at time {time}")
                         test_notes.add(s_pitch % 12)
                         test_pitches.add(s_pitch)
-                if bar == 3 and beat == 1:
-                    print(f"DEBUG ANACRUSIS: After anacrusis - test_notes={sorted(test_notes)}")
 
             if len(test_notes) >= 3:
                 # Check for chord formation with sufficient note count
                 bar, beat, ts = offset_to_bar_beat(time)
                 
                 # Analyze note collection for chord detection
-                if bar == 3 and beat == 1:
-                    print(f"DEBUG Bar {bar}, Beat {beat}: test_notes={sorted(test_notes)}, test_pitches={sorted(test_pitches)}")
-                    print(f"  Active notes before anacrusis: {sorted(active_notes)}")
-                
-                chords = self.detect_chords(test_notes, debug=(bar == 3 and beat == 1))
+                chords = self.detect_chords(test_notes, debug=False)
                 bar, beat, ts = offset_to_bar_beat(time)
                 key = (bar, beat, ts)
                 # Event created; previously had diagnostic printing here which has been removed
-                if bar == 3 and beat == 1:
-                    print(f"DEBUG BLOCK CHORD: detect_chords returned: {chords}")
                 if chords:
                     bass_note = self.semitone_to_note(min(test_pitches) % 12)
                     if key not in events:
@@ -839,10 +867,6 @@ class MidiChordAnalyzer(tk.Tk):
                     
                     events[key]["chords"].update(chords)
                     events[key]["basses"].add(bass_note)
-                    if bar == 3 and beat == 1:
-                        print(f"DEBUG EVENT CREATION: Added chords {chords} to event {key}")
-                    
-
                     
                     events[key]["event_notes"] = set(test_notes)
                     
@@ -861,13 +885,6 @@ class MidiChordAnalyzer(tk.Tk):
             melodic_notes = [elem for elem in flat_notes if isinstance(elem, note.Note)]
             melodic_notes = sorted(melodic_notes, key=lambda n: n.offset)
             
-            # Display single note analysis for specific range
-            print("[ARPEGGIO DEBUG] Single notes in Bar 10-12 range:")
-            for note_elem in melodic_notes:
-                bar, beat, ts = offset_to_bar_beat(note_elem.offset)
-                if 10 <= bar <= 12:
-                    print(f"  Offset {note_elem.offset}: Bar {bar}.{beat} - Pitch {note_elem.pitch.midi} ({note_elem.pitch.name})")
-            print()
             window_sizes = [3, 4]
             for w in window_sizes:
                 for i in range(len(melodic_notes) - w + 1):
@@ -884,11 +901,6 @@ class MidiChordAnalyzer(tk.Tk):
                     if chords:
                         # Display arpeggio analysis for specified range
                         bar, beat, ts = offset_to_bar_beat(window[0].offset)
-                        if 10 <= bar <= 12:
-                            print(f"[ARPEGGIO WINDOW] Window size {w}: notes at offsets {[n.offset for n in window]}")
-                            print(f"[ARPEGGIO WINDOW] Pitches: {[n.pitch.midi for n in window]} -> PCs: {list(window_pcs)}")
-                            print(f"[ARPEGGIO WINDOW] Detected chords: {chords}")
-                            print(f"[ARPEGGIO WINDOW] Assigned to: Bar {bar}.{beat} (first note offset {window[0].offset})")
                         
                         # HARMONIC STABILITY CHECK: Only accept arpeggio if underlying harmony is stable
                         # Check all time points in the arpeggio window for existing block chords
@@ -911,14 +923,7 @@ class MidiChordAnalyzer(tk.Tk):
                             for key, chord_set in underlying_chords[1:]:
                                 if chord_set != first_chord_set:
                                     harmonic_stability = False
-                                    if 10 <= bar <= 12:
-                                        print(f"[ARPEGGIO REJECT] Harmonic instability: {underlying_chords[0][0]} has {list(first_chord_set)}, {key} has {list(chord_set)}")
                                     break
-                            if harmonic_stability and 10 <= bar <= 12:
-                                print(f"[ARPEGGIO ACCEPT] Harmonic stability: consistent chord {list(first_chord_set)} throughout")
-                        else:
-                            if 10 <= bar <= 12:
-                                print(f"[ARPEGGIO ACCEPT] No underlying block chords - pure melodic arpeggio")
                         
                         if not harmonic_stability:
                             continue  # Skip this arpeggio
@@ -947,14 +952,11 @@ class MidiChordAnalyzer(tk.Tk):
                         # Accept arpeggio event
                         if key not in events:
                             events[key] = {"chords": set(), "basses": set(), "event_notes": set(window_pcs)}
-                        else:
-                            print(f"[ARPEGGIO OVERWRITE] {key}: {list(events[key]['event_notes'])} -> {list(window_pcs)}")
                         events[key]["chords"].update(chords)
                         # Arpeggios contribute to chord identification but not bass detection
                         # Bass detection relies on actual bass line or block chord voicings
                         events[key]["event_notes"] = set(window_pcs)
                         events[key]["event_pitches"] = set(window_pitches)
-                        print(f"[ARPEGGIO CREATE] {key}: chords={chords}, window_pcs={list(window_pcs)}")
                         events[key]["chords"].update(chords)
                         events[key]["basses"].add(self.semitone_to_note(min(window_pitches) % 12))
                         events[key]["event_notes"] = set(window_pcs)
@@ -1368,8 +1370,6 @@ class MidiChordAnalyzer(tk.Tk):
         # First pass: try candidate roots that are present in the set
         for root in sorted(set(semitones)):
             normalized = {(n - root) % 12 for n in semitones}
-            if debug:
-                print(f"  CHORD DEBUG: Trying root {root}, normalized = {sorted(normalized)}")
             # Also collect basses and event pitches if available
             # Try to get the full set of event pitches and basses from the calling context
             # If not available, fallback to semitones only
@@ -1414,16 +1414,12 @@ class MidiChordAnalyzer(tk.Tk):
                 else:
                     if chord_pattern.issubset(normalized):
                         matched = name.replace('C', self.semitone_to_note(root))
-                        if debug:
-                            print(f"    FOUND: {name} -> {matched} (pattern {sorted(chord_pattern)} matches)")
                         chords_found.append(matched)
                         break
 
         # Second pass: try "noroot" style chords where the root pitch-class is absent
         for root in sorted(set(range(12)) - set(semitones)):
             normalized = {(n - root) % 12 for n in semitones}
-            if debug:
-                print(f"  NOROOT DEBUG: Trying absent root {root}, normalized = {sorted(normalized)}")
             for name in PRIORITY:
                 if "noroot" not in name:
                     continue
@@ -1432,18 +1428,8 @@ class MidiChordAnalyzer(tk.Tk):
                 chord_pattern = set(CHORDS[name])
                 if chord_pattern == normalized:
                     matched = name.replace('C', self.semitone_to_note(root))
-                    if debug:
-                        print(f"    NOROOT FOUND: {name} -> {matched} (pattern {sorted(chord_pattern)} matches)")
                     chords_found.append(matched)
                     break
-
-        # BUT WAIT - we're still missing regular chord detection! Let me check if Bm is being found normally
-        if debug:
-            print(f"  REGULAR CHORD CHECK: Looking for Bm pattern [0,3,7] in any normalization...")
-            for root in range(12):
-                normalized = {(n - root) % 12 for n in semitones}
-                if set([0, 3, 7]).issubset(normalized):
-                    print(f"    Bm pattern found with root {root}: normalized = {sorted(normalized)}")
 
         return chords_found
 
@@ -1542,7 +1528,12 @@ class MidiChordAnalyzer(tk.Tk):
             # Generate entropy analysis for loaded data (same as in run_analysis)
             from io import StringIO
             entropy_buf = StringIO()
-            analyzer = EntropyAnalyzer(self.analyzed_events, logger=lambda x: print(x, file=entropy_buf))
+            analyzer = EntropyAnalyzer(
+                self.analyzed_events, 
+                logger=lambda x: print(x, file=entropy_buf),
+                strength_map=self.custom_strength_map,
+                rule_params=self.custom_rule_params
+            )
             analyzer.step_stage1_strengths(print_legend=True)
             self.entropy_review_text = entropy_buf.getvalue()
             
@@ -1701,31 +1692,52 @@ class EmbeddedMidiKeyboard:
         except Exception:
             pass
 
-        # Try to initialize pygame.midi for sound output (optional)
+        # Try to initialize pygame for audio output (optional)
         if PYGAME_AVAILABLE:
             try:
+                print("Audio Debug: Initializing pygame mixer...")
+                # Initialize both mixer and midi
+                pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=1024)
+                pygame.mixer.init()
+                print("Audio Debug: pygame.mixer initialized successfully")
+                
                 pygame.midi.init()
+                print("Audio Debug: pygame.midi initialized")
                 self.pygame = pygame
                 self.pygame_midi = pygame.midi
+                
+                # Initialize audio synthesis for MIDI playback
+                self.active_notes = {}  # Track currently playing notes
+                print("Audio Debug: Audio synthesis system ready")
+                
                 try:
                     default_out = pygame.midi.get_default_output_id()
-                except Exception:
+                    print(f"Audio Debug: Default MIDI output ID: {default_out}")
+                except Exception as e:
+                    print(f"Audio Debug: Failed to get default MIDI output: {e}")
                     default_out = None
                 if default_out is not None and default_out >= 0:
                     try:
                         self.midi_out = pygame.midi.Output(default_out)
-                    except Exception:
+                        print("Audio Debug: MIDI output created successfully")
+                    except Exception as e:
+                        print(f"Audio Debug: Failed to create MIDI output: {e}")
                         self.midi_out = None
                 else:
                     self.midi_out = None
-            except Exception:
+                    print("Audio Debug: No MIDI output available")
+            except Exception as e:
+                print(f"Audio Debug: pygame initialization failed: {e}")
                 self.pygame = None
                 self.pygame_midi = None
                 self.midi_out = None
+                self.active_notes = {}
         else:
+            print("Audio Debug: pygame not available")
             self.pygame = None
             self.pygame_midi = None
             self.midi_out = None
+            self.active_notes = {}
 
         # Minimal constants
         WHITE_KEYS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
@@ -1943,19 +1955,93 @@ class EmbeddedMidiKeyboard:
                 return note
         return "C"
 
+    def _generate_sine_wave(self, frequency, duration=0.5, volume=0.3):
+        """Generate a sine wave for audio synthesis."""
+        print(f"Audio Debug: _generate_sine_wave called - freq: {frequency}, duration: {duration}, volume: {volume}")
+        if not PYGAME_AVAILABLE:
+            print("Audio Debug: pygame not available for sine wave generation")
+            return None
+        
+        try:
+            import numpy as np
+            print("Audio Debug: numpy imported successfully")
+            sample_rate = 22050
+            frames = int(duration * sample_rate)
+            arr = np.zeros((frames, 2))
+            print(f"Audio Debug: Created array with {frames} frames")
+            
+            # Generate sine wave
+            for i in range(frames):
+                wave = volume * np.sin(2 * np.pi * frequency * i / sample_rate)
+                arr[i][0] = wave  # Left channel
+                arr[i][1] = wave  # Right channel
+            
+            # Convert to pygame Sound
+            arr = (arr * 32767).astype(np.int16)
+            sound = pygame.sndarray.make_sound(arr)
+            print("Audio Debug: Successfully created pygame Sound object")
+            return sound
+        except ImportError as e:
+            print(f"Audio Debug: numpy import failed: {e}")
+            return None
+        except Exception as e:
+            print(f"Audio Debug: sine wave generation failed: {e}")
+            return None
+
+    def _midi_to_frequency(self, midi_note):
+        """Convert MIDI note number to frequency in Hz."""
+        return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
+
     def _play_note(self, semitone, velocity=127):
         note_num = 60 + semitone
+        print(f"Audio Debug: _play_note called - semitone: {semitone}, note_num: {note_num}, velocity: {velocity}")
+        
+        # Send MIDI data
         if getattr(self, 'midi_out', None):
             try:
                 self.midi_out.note_on(note_num, velocity)
-            except Exception:
-                pass
+                print("Audio Debug: MIDI note_on sent successfully")
+            except Exception as e:
+                print(f"Audio Debug: MIDI note_on failed: {e}")
+        else:
+            print("Audio Debug: No MIDI output available")
+        
+        # Also generate audio synthesis for immediate playback
+        if PYGAME_AVAILABLE and hasattr(self, 'active_notes'):
+            try:
+                print("Audio Debug: Attempting audio synthesis...")
+                frequency = self._midi_to_frequency(note_num)
+                volume = velocity / 127.0 * 0.3  # Scale volume
+                print(f"Audio Debug: Frequency: {frequency} Hz, Volume: {volume}")
+                sound = self._generate_sine_wave(frequency, 2.0, volume)  # 2 second duration
+                if sound:
+                    channel = sound.play()
+                    self.active_notes[semitone] = channel
+                    print("Audio Debug: Audio synthesis played successfully")
+                else:
+                    print("Audio Debug: Failed to generate sine wave")
+            except Exception as e:
+                print(f"Audio Debug: Audio synthesis failed: {e}")
+        else:
+            print("Audio Debug: Audio synthesis not available")
 
     def _stop_note(self, semitone):
         note_num = 60 + semitone
+        
+        # Send MIDI stop
         if getattr(self, 'midi_out', None):
             try:
                 self.midi_out.note_off(note_num, 0)
+            except Exception:
+                pass
+        
+        # Stop synthesized audio
+        if hasattr(self, 'active_notes') and semitone in self.active_notes:
+            try:
+                channel = self.active_notes[semitone]
+                if channel:
+                    channel.stop()
+                del self.active_notes[semitone]
             except Exception:
                 pass
 
@@ -2285,6 +2371,11 @@ class GridWindow(tk.Toplevel):
         style.configure("GridWindow.TButton", background="white", foreground="black")
 
         self.parent = parent
+        
+        # Store references to custom parameters from parent
+        self.custom_strength_map = getattr(parent, 'custom_strength_map', None)
+        self.custom_rule_params = getattr(parent, 'custom_rule_params', None)
+        
         # Apply same filtering as main window (respect include_non_drive_events)
         raw_events = {k: v for k, v in events.items()} if events else {}
         if hasattr(parent, 'include_non_drive_events') and not parent.include_non_drive_events:
@@ -2510,7 +2601,13 @@ class GridWindow(tk.Toplevel):
         if not chords:
             return 0.0
 
-        analyzer = EntropyAnalyzer({event_key: payload}, base=2, logger=lambda x: None)    
+        analyzer = EntropyAnalyzer(
+            {event_key: payload}, 
+            base=2, 
+            logger=lambda x: None,
+            strength_map=self.custom_strength_map,
+            rule_params=self.custom_rule_params
+        )    
         scores = []
         for chord in chords:
             score = analyzer._compute_score(chord)
@@ -2649,7 +2746,13 @@ class GridWindow(tk.Toplevel):
         event_data = self.events.get(event_key, {})
         
         # Calculate chord strength using entropy analyzer
-        analyzer = EntropyAnalyzer({event_key: event_data}, base=2, logger=lambda x: None)
+        analyzer = EntropyAnalyzer(
+            {event_key: event_data}, 
+            base=2, 
+            logger=lambda x: None,
+            strength_map=self.custom_strength_map,
+            rule_params=self.custom_rule_params
+        )
         
         # Get all chord strengths for this event to calculate probabilities
         chords = event_data.get("chords", [])
@@ -3243,6 +3346,536 @@ from typing import List, Tuple, Dict, Any, Optional, Callable, Set
 from collections import Counter
 from math import log2
 
+class DriveStrengthParametersDialog:
+    """Dialog for configuring drive strength parameters and rule bonuses."""
+    
+    # Default values
+    DEFAULT_STRENGTH_MAP = {
+        "7": 100, "7b5": 90, "7#5": 80, "m7": 70, "ø7": 65,
+        "7m9noroot": 65, "7no3": 55, "7no5": 55, "7noroot": 50,
+        "aug": 40, "": 40, "m": 35, "maj7": 30, "mMaj7": 25
+    }
+    
+    DEFAULT_RULE_PARAMS = {
+        "rule1_bass_support": 20,
+        "rule2_tonic_dominant": 50,
+        "rule2_selected_tonic": "No Tonic",  # Default: disabled
+        "rule3_root_repetition": 20,
+        "rule4_resolution_max": 50,
+        "rule5_clean_voicing": 50,
+        "rule6_same_chord": 33,
+        "rule6_dominant_prep": 50,
+        "rule7_root_doubled": 33,
+        "rule7_root_tripled": 50
+    }
+    
+    def __init__(self, parent, current_strength_map=None, current_rule_params=None):
+        self.parent = parent
+        self.result = None
+        self.new_strength_map = None
+        self.new_rule_params = None
+        
+        # Initialize with current or default values
+        self.strength_map = current_strength_map or self.DEFAULT_STRENGTH_MAP.copy()
+        self.rule_params = current_rule_params or self.DEFAULT_RULE_PARAMS.copy()
+        
+        # Create dialog window
+        self.window = tk.Toplevel(parent)
+        self.window.title("Drive Strength Configuration")
+        self.window.withdraw()  # Hide initially to prevent flash
+        self.window.geometry("600x580")
+        self.window.resizable(True, True)
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.configure(bg="white")  # Set white background
+        
+        # Configure styles for white theme
+        import platform
+        from tkinter import ttk
+        style = ttk.Style()
+        style.configure("Dialog.TFrame", background="white")
+        style.configure("Dialog.TLabel", background="white", foreground="black")
+        style.configure("Dialog.TNotebook", background="white")
+        style.configure("Dialog.TNotebook.Tab", background="lightgray", foreground="black")
+        style.configure("Dialog.TButton", background="white", foreground="black")
+        style.configure("Dialog.TEntry", background="white", foreground="black")
+        style.configure("Dialog.TCombobox", 
+                       fieldbackground="white", 
+                       background="white", 
+                       foreground="black",
+                       arrowcolor="black")
+        
+        # Configure LabelFrame style (needed for rules tab)
+        style.configure("Dialog.TLabelFrame", background="white", foreground="black")
+        style.configure("Dialog.TLabelFrame.Label", background="white", foreground="black")
+        
+        # Center the window
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (self.window.winfo_screenheight() // 2) - (580 // 2)
+        self.window.geometry(f"600x580+{x}+{y}")
+        
+        # Variables for UI
+        self.strength_vars = {}
+        self.rule_vars = {}
+        
+        self.setup_ui()
+        
+        # Show the window now that everything is set up
+        self.window.deiconify()
+        
+        # Bind close event
+        self.window.protocol("WM_DELETE_WINDOW", self.cancel)
+    
+    def setup_ui(self):
+        """Create the complete UI for the dialog."""
+        # Main frame with scrollable content
+        main_frame = ttk.Frame(self.window, style="Dialog.TFrame")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(main_frame, style="Dialog.TNotebook")
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Chord Strengths Tab
+        strength_frame = ttk.Frame(notebook, style="Dialog.TFrame")
+        notebook.add(strength_frame, text="Chord Base Strengths")
+        
+        # Rule Parameters Tab
+        rules_frame = ttk.Frame(notebook, style="Dialog.TFrame")
+        notebook.add(rules_frame, text="Factor Bonuses")
+        
+        self.setup_strength_tab(strength_frame)
+        self.setup_rules_tab(rules_frame)
+
+        # Load current values after both tabs are set up
+        self.load_current_values()
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame, style="Dialog.TFrame")
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Reset Defaults", command=self.reset_defaults, style="Dialog.TButton").pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="Save Preset...", command=self.save_preset, style="Dialog.TButton").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Button(button_frame, text="Load Preset...", command=self.load_preset, style="Dialog.TButton").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=self.cancel, style="Dialog.TButton").pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Apply", command=self.apply, style="Dialog.TButton").pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="OK", command=self.ok, style="Dialog.TButton").pack(side=tk.RIGHT, padx=(5, 0))
+    
+    def setup_strength_tab(self, parent):
+        """Setup the chord strength configuration tab."""
+        # Scrollable frame
+        canvas = tk.Canvas(parent, bg="white")
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style="Dialog.TFrame")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Header
+        header_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header_frame, text="Chord Base Strengths", font=("Arial", 12, "bold"), style="Dialog.TLabel").pack()
+        ttk.Label(header_frame, text="Configure the base strength points for each chord type (Range: 0-100)", 
+                 font=("Arial", 9), style="Dialog.TLabel").pack(pady=(5, 0))
+        
+        # Chord strength entries with proper centering
+        strength_entries_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
+        strength_entries_frame.pack(expand=True, padx=80, pady=10)
+        
+        # Define chord descriptions
+        chord_descriptions = {
+            "7": "Dominant 7th",
+            "7b5": "Dominant 7th ♭5",
+            "7#5": "Dominant 7th ♯5",
+            "m7": "Minor 7th",
+            "ø7": "Half-diminished 7th",
+            "7m9noroot": "Minor 9th (no root)",
+            "7no3": "Dominant 7th (no 3rd)",
+            "7no5": "Dominant 7th (no 5th)",
+            "7noroot": "Dominant 7th (no root)",
+            "aug": "Augmented triad",
+            "": "Major triad",
+            "m": "Minor triad",
+            "maj7": "Major 7th",
+            "mMaj7": "Minor-major 7th"
+        }
+        
+        row = 0
+        for chord_symbol, description in chord_descriptions.items():
+            frame = ttk.Frame(strength_entries_frame, style="Dialog.TFrame")
+            frame.pack(fill=tk.X, pady=2)
+            
+            # Center the content using a container frame
+            center_frame = ttk.Frame(frame, style="Dialog.TFrame")
+            center_frame.pack(expand=True, fill=tk.X)
+            
+            # Label (centered with proper width)
+            label_text = f"{description} ({chord_symbol if chord_symbol else 'major'}):"
+            ttk.Label(center_frame, text=label_text, width=35, anchor="center", style="Dialog.TLabel").pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            # Entry with validation
+            var = tk.StringVar()
+            self.strength_vars[chord_symbol] = var
+            
+            entry = ttk.Entry(center_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
+            entry.pack(side=tk.LEFT, padx=(10, 5))
+            
+            # Range label
+            ttk.Label(center_frame, text="(0-100)", font=("Arial", 8), foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
+            
+            row += 1
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+    
+    def setup_rules_tab(self, parent):
+        """Setup the rule parameters configuration tab."""
+        # Scrollable frame
+        canvas = tk.Canvas(parent, bg="white")
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style="Dialog.TFrame")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Header
+        header_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header_frame, text="Factor Bonus Parameters", font=("Arial", 12, "bold"), style="Dialog.TLabel").pack()
+        
+        # Rules entries with proper centering
+        rules_entries_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
+        rules_entries_frame.pack(expand=True, padx=80, pady=10)
+        
+        # Define rule descriptions with icons and enhanced tooltips
+        rule_descriptions = [
+            ("rule1_bass_support", "Factor 1: Bass Support", "♪", "Adds points when the bass note supports the chord root. Bass foundation strengthens harmonic clarity.", "(0-100)"),
+            ("rule2_tonic_dominant", "Factor 2: Tonic-Dominant Relationship", "🎯", "Bonus points awarded to the dominant chord of the selected tonic key. Strengthens tonal center relationships.", "(0-100)"),
+            ("rule3_root_repetition", "Factor 3: Root Repetition (per occurrence)", "⟲", "Cumulative bonus for each repeated root note. Reinforcement through repetition increases drive strength.", "(0-100)"),
+            ("rule4_resolution_max", "Factor 4: Proportional Resolution (maximum)", "↗", "Maximum bonus awarded for strong resolution patterns. Tension and release create musical momentum.", "(0-100)"),
+            ("rule5_clean_voicing", "Factor 5: Clean Voicing", "✓", "Bonus for clean, well-structured chord arrangements. Clear voicing enhances harmonic impact.", "(0-100)"),
+            ("rule6_same_chord", "Factor 6a: Same Chord Continuation", "→", "Bonus when the same chord continues from the previous event. Harmonic stability creates forward motion.", "(0-100)"),
+            ("rule6_dominant_prep", "Factor 6b: Dominant Preparation", "◉", "Bonus when the previous chord was a dominant. Dominant preparation enhances resolution strength.", "(0-100)"),
+            ("rule7_root_doubled", "Factor 7a: Root Doubled", "②", "Bonus when the chord root appears exactly twice. Root doubling strengthens harmonic foundation.", "(0-100)"),
+            ("rule7_root_tripled", "Factor 7b: Root Tripled+", "③", "Bonus when the chord root appears three or more times. Multiple roots create powerful harmonic drive.", "(0-100)")
+        ]
+        
+        for rule_key, rule_name, icon, tooltip, range_text in rule_descriptions:
+            # Rule frame
+            rule_frame = ttk.LabelFrame(rules_entries_frame, text=rule_name, padding=10)
+            rule_frame.pack(fill=tk.X, pady=5)
+            
+            # Single horizontal frame for icon and entry
+            content_frame = ttk.Frame(rule_frame, style="Dialog.TFrame")
+            content_frame.pack(fill=tk.X, pady=(5, 0))
+            
+            # Icon label with tooltip (left side)
+            icon_label = ttk.Label(content_frame, text=icon, font=("Arial", 14), style="Dialog.TLabel")
+            icon_label.pack(side=tk.LEFT, padx=(0, 15))
+            
+            # Create tooltip for the icon
+            def create_tooltip(widget, text):
+                def on_enter(event):
+                    tooltip_window = tk.Toplevel()
+                    tooltip_window.wm_overrideredirect(True)
+                    tooltip_window.configure(bg="lightyellow", bd=1, relief="solid")
+                    
+                    label = tk.Label(tooltip_window, text=text, bg="lightyellow", 
+                                   font=("Arial", 9), wraplength=300, justify="left", padx=5, pady=3)
+                    label.pack()
+                    
+                    x = widget.winfo_rootx() + 20
+                    y = widget.winfo_rooty() + 20
+                    tooltip_window.geometry(f"+{x}+{y}")
+                    
+                    widget.tooltip_window = tooltip_window
+                
+                def on_leave(event):
+                    if hasattr(widget, 'tooltip_window'):
+                        widget.tooltip_window.destroy()
+                        del widget.tooltip_window
+                
+                widget.bind("<Enter>", on_enter)
+                widget.bind("<Leave>", on_leave)
+            
+            create_tooltip(icon_label, tooltip)
+            
+            # Special handling for Factor 2 (Tonic-Dominant)
+            if rule_key == "rule2_tonic_dominant":
+                # Points label and entry
+                ttk.Label(content_frame, text="Points:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
+                
+                var = tk.StringVar()
+                self.rule_vars[rule_key] = var
+                
+                entry = ttk.Entry(content_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
+                entry.pack(side=tk.LEFT, padx=(5, 10))
+                
+                # Tonic key selector
+                ttk.Label(content_frame, text="Tonic:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
+                
+                tonic_var = tk.StringVar()
+                self.rule_vars["rule2_selected_tonic"] = tonic_var
+                
+                tonic_keys = ['No Tonic', 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B']
+                tonic_combo = ttk.Combobox(content_frame, textvariable=tonic_var, values=tonic_keys, 
+                                         width=6, justify="center", style="Dialog.TCombobox")
+                tonic_combo.pack(side=tk.LEFT, padx=(5, 10))
+                
+                # Range label
+                ttk.Label(content_frame, text=range_text, font=("Arial", 8), 
+                         foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
+            else:
+                # Standard handling for other factors
+                ttk.Label(content_frame, text="Points:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
+                
+                # Entry with validation
+                var = tk.StringVar()
+                self.rule_vars[rule_key] = var
+                
+                entry = ttk.Entry(content_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
+                entry.pack(side=tk.LEFT, padx=(5, 0))
+                
+                # Range label
+                ttk.Label(content_frame, text=range_text, font=("Arial", 8), 
+                         foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+    
+    def load_current_values(self):
+        """Load current values into the UI."""
+        # Load strength values
+        for chord_symbol, var in self.strength_vars.items():
+            # Use current values if available, otherwise use defaults
+            current_value = self.strength_map.get(chord_symbol, self.DEFAULT_STRENGTH_MAP.get(chord_symbol, 0))
+            var.set(str(current_value))
+        
+        # Load rule values  
+        for rule_key, var in self.rule_vars.items():
+            # Use current values if available, otherwise use defaults
+            current_value = self.rule_params.get(rule_key, self.DEFAULT_RULE_PARAMS.get(rule_key, 0))
+            var.set(str(current_value))
+    
+    def validate_inputs(self):
+        """Validate all input values."""
+        errors = []
+        
+        # Validate strength values
+        for chord_symbol, var in self.strength_vars.items():
+            try:
+                value = int(var.get())
+                if not (0 <= value <= 100):
+                    chord_desc = {
+                        "7": "Dominant 7th", "7b5": "Dominant 7th ♭5", "7#5": "Dominant 7th ♯5",
+                        "m7": "Minor 7th", "ø7": "Half-diminished 7th", "7m9noroot": "Minor 9th (no root)",
+                        "7no3": "Dom 7th (no 3rd)", "7no5": "Dom 7th (no 5th)", "7noroot": "Dom 7th (no root)",
+                        "aug": "Augmented", "": "Major triad", "m": "Minor triad",
+                        "maj7": "Major 7th", "mMaj7": "Minor-major 7th"
+                    }
+                    errors.append(f"{chord_desc.get(chord_symbol, chord_symbol)}: must be 0-100 (got {value})")
+            except ValueError:
+                errors.append(f"Chord strength for {chord_symbol}: must be a number")
+        
+        # Validate rule values with universal 0-100 range
+        rule_ranges = {
+            "rule1_bass_support": (0, 100),
+            "rule3_root_repetition": (0, 100),
+            "rule4_resolution_max": (0, 100),
+            "rule5_clean_voicing": (0, 100),
+            "rule6_same_chord": (0, 100),
+            "rule6_dominant_prep": (0, 100),
+            "rule7_root_doubled": (0, 100),
+            "rule7_root_tripled": (0, 100)
+        }
+        
+        rule_names = {
+            "rule1_bass_support": "Factor 1 (Bass Support)",
+            "rule3_root_repetition": "Factor 3 (Root Repetition)",
+            "rule4_resolution_max": "Factor 4 (Resolution Max)",
+            "rule5_clean_voicing": "Factor 5 (Clean Voicing)",
+            "rule6_same_chord": "Factor 6a (Same Chord)",
+            "rule6_dominant_prep": "Factor 6b (Dominant Prep)",
+            "rule7_root_doubled": "Factor 7a (Root Doubled)",
+            "rule7_root_tripled": "Factor 7b (Root Tripled)"
+        }
+        
+        for rule_key, var in self.rule_vars.items():
+            # Skip validation for tonic selector (it's a string, not a number)
+            if rule_key == "rule2_selected_tonic":
+                continue
+                
+            try:
+                value = int(var.get())
+                min_val, max_val = rule_ranges.get(rule_key, (0, 100))
+                if not (min_val <= value <= max_val):
+                    errors.append(f"{rule_names.get(rule_key, rule_key)}: must be 0-100 (got {value})")
+            except ValueError:
+                errors.append(f"{rule_names.get(rule_key, rule_key)}: must be a number")
+        
+        return errors
+    
+    def apply(self):
+        """Apply the current settings."""
+        errors = self.validate_inputs()
+        if errors:
+            messagebox.showerror("Validation Error", "\n".join(errors))
+            return False
+        
+        # Update strength map
+        new_strength_map = {}
+        for chord_symbol, var in self.strength_vars.items():
+            new_strength_map[chord_symbol] = int(var.get())
+        
+        # Update rule params
+        new_rule_params = {}
+        for rule_key, var in self.rule_vars.items():
+            if rule_key == "rule2_selected_tonic":
+                # Keep tonic selector as string
+                new_rule_params[rule_key] = var.get()
+            else:
+                # Convert numeric values to integers
+                new_rule_params[rule_key] = int(var.get())
+        
+        self.new_strength_map = new_strength_map
+        self.new_rule_params = new_rule_params
+        self.result = "apply"
+        return True
+    
+    def ok(self):
+        """OK button handler."""
+        if self.apply():
+            self.window.destroy()
+    
+    def cancel(self):
+        """Cancel button handler."""
+        self.result = None
+        self.window.destroy()
+    
+    def save_preset(self):
+        """Save current parameters to a preset file."""
+        import json
+        import datetime
+        from tkinter import filedialog, simpledialog
+        
+        # Get preset name from user
+        preset_name = simpledialog.askstring(
+            "Save Preset", 
+            "Enter a name for this preset:",
+            parent=self.window
+        )
+        
+        if not preset_name:
+            return
+        
+        # Get current values
+        current_strength_map = {}
+        for chord_symbol, var in self.strength_vars.items():
+            try:
+                current_strength_map[chord_symbol] = int(var.get())
+            except ValueError:
+                current_strength_map[chord_symbol] = 0
+        
+        current_rule_params = {}
+        for rule_key, var in self.rule_vars.items():
+            try:
+                current_rule_params[rule_key] = int(var.get())
+            except ValueError:
+                current_rule_params[rule_key] = 0
+        
+        # Create preset data
+        preset_data = {
+            "name": preset_name,
+            "strength_map": current_strength_map,
+            "rule_params": current_rule_params,
+            "created": str(datetime.datetime.now()),
+            "version": "1.0"
+        }
+        
+        # Ask for save location
+        filename = filedialog.asksaveasfilename(
+            title="Save Drive Strength Preset",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile=f"{preset_name.replace(' ', '_')}_preset.json",
+            parent=self.window
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    json.dump(preset_data, f, indent=2)
+                messagebox.showinfo("Success", f"Preset '{preset_name}' saved successfully!", parent=self.window)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save preset:\n{str(e)}", parent=self.window)
+    
+    def load_preset(self):
+        """Load parameters from a preset file."""
+        import json
+        from tkinter import filedialog
+        
+        # Ask for file to load
+        filename = filedialog.askopenfilename(
+            title="Load Drive Strength Preset",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            parent=self.window
+        )
+        
+        if not filename:
+            return
+        
+        try:
+            with open(filename, 'r') as f:
+                preset_data = json.load(f)
+            
+            # Validate preset data
+            if not isinstance(preset_data, dict):
+                raise ValueError("Invalid preset file format")
+            
+            if "strength_map" not in preset_data or "rule_params" not in preset_data:
+                raise ValueError("Preset file missing required data")
+            
+            # Load strength values
+            strength_map = preset_data["strength_map"]
+            for chord_symbol, var in self.strength_vars.items():
+                if chord_symbol in strength_map:
+                    var.set(str(strength_map[chord_symbol]))
+            
+            # Load rule values
+            rule_params = preset_data["rule_params"]
+            for rule_key, var in self.rule_vars.items():
+                if rule_key in rule_params:
+                    var.set(str(rule_params[rule_key]))
+            
+            preset_name = preset_data.get("name", "Unknown")
+            messagebox.showinfo("Success", f"Preset '{preset_name}' loaded successfully!", parent=self.window)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load preset:\n{str(e)}", parent=self.window)
+    
+    def reset_defaults(self):
+        """Reset all values to defaults."""
+        # Reset strength values
+        for chord_symbol, var in self.strength_vars.items():
+            var.set(str(self.DEFAULT_STRENGTH_MAP.get(chord_symbol, 0)))
+        
+        # Reset rule values
+        for rule_key, var in self.rule_vars.items():
+            var.set(str(self.DEFAULT_RULE_PARAMS.get(rule_key, 0)))
+
 class EntropyAnalyzer:
     """
     Advanced statistical analysis of chord progressions.
@@ -3278,13 +3911,31 @@ class EntropyAnalyzer:
         events: Dict[Tuple[int, int, str], Dict[str, Any]],
         symbol_mode: str = "chord",
         base: int = 2,
-        logger: Callable[[str], None] = print
+        logger: Callable[[str], None] = print,
+        strength_map: Optional[Dict[str, int]] = None,
+        rule_params: Optional[Dict[str, int]] = None
     ):
         self.events = events
         self.symbol_mode = symbol_mode
         self.base = base
         self.logger = logger
         self.custom_steps: List[Tuple[str, Callable[["EntropyAnalyzer"], None]]] = []
+        
+        # Use provided parameters or defaults
+        self.strength_map = strength_map if strength_map is not None else self._STRENGTH_MAP.copy()
+        
+        # Default rule parameters
+        default_rule_params = {
+            "rule1_bass_support": 20,
+            "rule3_root_repetition": 2,
+            "rule4_resolution_max": 10,
+            "rule5_clean_voicing": 10,
+            "rule6_same_chord": 5,
+            "rule6_dominant_prep": 10,
+            "rule7_root_doubled": 5,
+            "rule7_root_tripled": 10
+        }
+        self.rule_params = rule_params if rule_params is not None else default_rule_params
 
     # --------------------------
     # Stage 1: Chord strengths
@@ -3366,7 +4017,7 @@ class EntropyAnalyzer:
 
         # Prepare table data
         table_rows = []
-        rule_names = [f"R{i+1}" for i in range(7)]
+        rule_names = [f"F{i+1}" for i in range(7)]
 
         for (bar, beat, ts), payload in self.events.items():
             chords = payload.get("chords", [])
@@ -3387,17 +4038,20 @@ class EntropyAnalyzer:
                 dominant_root = self._fifth_up(root)
                 dominant_chord = dominant_root + quality
                 if chord in prev_event_chords:
-                    rule6_bonus += 5
-                    applied_rules.append(f"Rule 6: Previous event contained {chord} → +5")
+                    rule6_same = self.rule_params.get("rule6_same_chord", 5)
+                    rule6_bonus += rule6_same
+                    applied_rules.append(f"Rule 6: Previous event contained {chord} → +{rule6_same}")
                 if dominant_chord in prev_event_chords:
-                    rule6_bonus += 10
-                    applied_rules.append(f"Rule 6: Previous event contained dominant {dominant_chord} → +10")
+                    rule6_dom = self.rule_params.get("rule6_dominant_prep", 10)
+                    rule6_bonus += rule6_dom
+                    applied_rules.append(f"Rule 6: Previous event contained dominant {dominant_chord} → +{rule6_dom}")
                 base_score += rule6_bonus
 
                 # Rule 4: proportional resolution
                 if total_resolutions > 0:
                     ratio = resolution_count.get(root, 0) / total_resolutions
-                    r4_bonus = 10 * ratio
+                    rule4_max = self.rule_params.get("rule4_resolution_max", 10)
+                    r4_bonus = rule4_max * ratio
                     if r4_bonus > 0:
                         applied_rules.append(f"Rule 4: Resolution ratio {ratio:.2f} → +{int(round(r4_bonus))}")
                     base_score += r4_bonus
@@ -3444,9 +4098,9 @@ class EntropyAnalyzer:
         for row in table_rows:
             label = row[0]
             chord_name = label.split()[-1]
-            # Get base strength from _STRENGTH_MAP
+            # Get base strength from strength_map
             _, quality = self._split_chord(chord_name)
-            base_strength = self._STRENGTH_MAP.get(quality or "", 0)
+            base_strength = self.strength_map.get(quality or "", 0)
             total = base_strength
             for cell in row[1:]:
                 try:
@@ -3490,13 +4144,13 @@ class EntropyAnalyzer:
 
         legend = (
             "Legend for Entropy Grid:\n"
-            "  R1 - Is the drive supported by the bass?\n"
-            "  R2 - Is a tonal centre established? (N/A)\n"
-            "  R3 - How often is the drive recurring?\n"
-            "  R4 - How often is the drive discharging?\n"
-            f"  R5 - Is the drive articulated as a clean stack in the texture? {CLEAN_STACK_SYMBOL}\n"
-            "  R6 - Was the drive itself, or its dominant in the previous event?\n"
-            f"  R7 - Is the root of the drive doubled at the octave? {ROOT2_SYMBOL}\n"
+            "  Factor 1 - Is the drive supported by the bass?\n"
+            "  Factor 2 - Tonic-dominant relationship (configurable)\n"
+            "  Factor 3 - How often is the drive recurring?\n"
+            "  Factor 4 - How often is the drive discharging?\n"
+            f"  Factor 5 - Is the drive articulated as a clean stack in the texture? {CLEAN_STACK_SYMBOL}\n"
+            "  Factor 6 - Was the drive itself, or its dominant in the previous event?\n"
+            f"  Factor 7 - Is the root of the drive doubled at the octave? {ROOT2_SYMBOL}\n"
         )
         self.logger(legend)
 
@@ -3533,20 +4187,43 @@ class EntropyAnalyzer:
     # --------------------------
     # New helper: compute score with modifiers
     # --------------------------
+    def _get_dominant_of_tonic(self, tonic: str) -> str:
+        """Return the dominant (5th) of the given tonic key."""
+        # Circle of fifths: each key's dominant is a perfect 5th up
+        dominant_map = {
+            'C': 'G', 'G': 'D', 'D': 'A', 'A': 'E', 'E': 'B', 'B': 'F#', 'F#': 'C#',
+            'C#': 'G#', 'G#': 'D#', 'D#': 'A#', 'A#': 'F', 'F': 'C',
+            # Enharmonic equivalents
+            'Db': 'Ab', 'Ab': 'Eb', 'Eb': 'Bb', 'Bb': 'F',
+            'Gb': 'Db'
+        }
+        return dominant_map.get(tonic, 'G')  # Default to G if unknown tonic
+
     def _compute_score(self, chord: str, basses: Optional[List[str]] = None, event_payload: Optional[dict] = None, root_counter: Optional[Dict[str, int]] = None) -> Tuple[int, List[str]]:
         root, quality = self._split_chord(chord)
-        score = self._STRENGTH_MAP.get(quality or "", 0)
+        score = self.strength_map.get(quality or "", 0)
         messages: List[str] = []
 
         # Rule 1: Bass support
         if basses and root in basses:
-            score += 20
-            messages.append(f"Rule 1: Bass supports {chord} → +20 bonus")
+            rule1_bonus = self.rule_params.get("rule1_bass_support", 20)
+            score += rule1_bonus
+            messages.append(f"Rule 1: Bass supports {chord} → +{rule1_bonus} bonus")
+
+        # Rule 2: Tonic-Dominant relationship
+        selected_tonic = self.rule_params.get("rule2_selected_tonic", "No Tonic")
+        if selected_tonic != "No Tonic":
+            dominant_of_tonic = self._get_dominant_of_tonic(selected_tonic)
+            if root == dominant_of_tonic:
+                rule2_bonus = self.rule_params.get("rule2_tonic_dominant", 50)
+                score += rule2_bonus
+                messages.append(f"Rule 2: {chord} is dominant of {selected_tonic} → +{rule2_bonus} bonus")
 
         # Rule 3: root repetition (now always included)
         if root_counter is not None:
             prev_count = root_counter.get(root, 0)
-            r3_bonus = 2 * prev_count if prev_count > 0 else 0
+            rule3_multiplier = self.rule_params.get("rule3_root_repetition", 2)
+            r3_bonus = rule3_multiplier * prev_count if prev_count > 0 else 0
             if r3_bonus > 0:
                 messages.append(f"Rule 3: Root {root} repeated → +{r3_bonus}")
             score += r3_bonus
@@ -3555,16 +4232,19 @@ class EntropyAnalyzer:
             chord_info = event_payload.get("chord_info", {})
             # Rule 5
             if chord_info.get(chord, {}).get("clean_stack"):
-                score += 10
-                messages.append(f"Rule 5: Clean chord {chord} → +10 bonus")
+                rule5_bonus = self.rule_params.get("rule5_clean_voicing", 10)
+                score += rule5_bonus
+                messages.append(f"Rule 5: Clean chord {chord} → +{rule5_bonus} bonus")
             # Rule 7
             root_count = chord_info.get(chord, {}).get("root_count", 1)
             if root_count == 2:
-                score += 5
-                messages.append(f"Rule 7: Root doubled in chord {chord} → +5 bonus")
+                rule7_doubled = self.rule_params.get("rule7_root_doubled", 5)
+                score += rule7_doubled
+                messages.append(f"Rule 7: Root doubled in chord {chord} → +{rule7_doubled} bonus")
             elif root_count >= 3:
-                score += 10
-                messages.append(f"Rule 7: Root tripled+ in chord {chord} → +10 bonus")
+                rule7_tripled = self.rule_params.get("rule7_root_tripled", 10)
+                score += rule7_tripled
+                messages.append(f"Rule 7: Root tripled+ in chord {chord} → +{rule7_tripled} bonus")
 
         return score, messages
 
