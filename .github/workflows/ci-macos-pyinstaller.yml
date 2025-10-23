@@ -233,7 +233,7 @@ jobs:
       - name: Build with PyInstaller (Windows executable)
         run: |
           echo "== PYINSTALLER: WINDOWS EXE BUILD ==" > build-exe-windows.log
-          python -m PyInstaller --onefile --console --name DriveAnalyzer "TEST 2.py" `
+          python -m PyInstaller --onefile --console --name DriveAnalyzer TEST.py `
             --add-data "assets/title.png;assets" `
             --add-data "assets/ico.png;assets" `
             --add-data "assets/fonts;assets/fonts" `
