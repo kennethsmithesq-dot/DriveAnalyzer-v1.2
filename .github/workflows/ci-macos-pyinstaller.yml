@@ -35,7 +35,7 @@ jobs:
           if [ -f requirements.txt ]; then
             arch -x86_64 pip install -r requirements.txt
           else
-            arch -x86_64 pip install reportlab music21 pillow mido pygame
+            arch -x86_64 pip install reportlab music21 pillow mido pygame python-rtmidi
           fi
           arch -x86_64 python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
           rm -rf build dist *.spec || true
@@ -135,7 +135,7 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            pip install reportlab music21 pillow mido pygame
+            pip install reportlab music21 pillow mido pygame python-rtmidi
           fi
           python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env-arm64.txt || true
           rm -rf build dist *.spec || true
@@ -216,7 +216,7 @@ jobs:
           if (Test-Path requirements.txt) {
             pip install -r requirements.txt
           } else {
-            pip install reportlab music21 pillow mido pygame
+            pip install reportlab music21 pillow mido pygame python-rtmidi
           }
           python -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env-windows.txt
           Remove-Item -Path build,dist,*.spec -Recurse -Force -ErrorAction SilentlyContinue
