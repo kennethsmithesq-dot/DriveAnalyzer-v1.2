@@ -241,7 +241,6 @@ jobs:
             --hidden-import=mido --hidden-import=mido.backends --hidden-import=mido.backends.rtmidi --hidden-import=mido.backends._rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi `
             --hidden-import=pygame --hidden-import=pygame.midi --hidden-import=numpy --hidden-import=pygame.sndarray `
             --collect-all mido --collect-all rtmidi --collect-submodules mido --collect-submodules rtmidi `
-            --copy-metadata mido --copy-metadata rtmidi `
             --icon assets/myicon.ico 2>&1 | Tee-Object -FilePath build-exe-windows.log
           if (Test-Path dist/DriveAnalyzer.exe) {
             Write-Output "Build successful - DriveAnalyzer.exe created"
