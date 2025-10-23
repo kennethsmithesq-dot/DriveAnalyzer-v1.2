@@ -27,6 +27,12 @@ from music21 import converter, note, chord as m21chord, meter, stream
 try:
     import mido
     import rtmidi  # Explicitly import the backend for PyInstaller
+    # Import all mido backends explicitly for PyInstaller
+    try:
+        import mido.backends.rtmidi
+        import mido.backends._rtmidi
+    except ImportError:
+        pass  # Some backends may not be available
     MIDO_AVAILABLE = True
 except ImportError:
     mido = None
@@ -1695,45 +1701,33 @@ class EmbeddedMidiKeyboard:
         # Try to initialize pygame for audio output (optional)
         if PYGAME_AVAILABLE:
             try:
-                print("Audio Debug: Initializing pygame mixer...")
                 # Initialize both mixer and midi
                 pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=1024)
                 pygame.mixer.init()
-                print("Audio Debug: pygame.mixer initialized successfully")
-                
                 pygame.midi.init()
-                print("Audio Debug: pygame.midi initialized")
                 self.pygame = pygame
                 self.pygame_midi = pygame.midi
                 
                 # Initialize audio synthesis for MIDI playback
                 self.active_notes = {}  # Track currently playing notes
-                print("Audio Debug: Audio synthesis system ready")
                 
                 try:
                     default_out = pygame.midi.get_default_output_id()
-                    print(f"Audio Debug: Default MIDI output ID: {default_out}")
-                except Exception as e:
-                    print(f"Audio Debug: Failed to get default MIDI output: {e}")
+                except Exception:
                     default_out = None
                 if default_out is not None and default_out >= 0:
                     try:
                         self.midi_out = pygame.midi.Output(default_out)
-                        print("Audio Debug: MIDI output created successfully")
-                    except Exception as e:
-                        print(f"Audio Debug: Failed to create MIDI output: {e}")
+                    except Exception:
                         self.midi_out = None
                 else:
                     self.midi_out = None
-                    print("Audio Debug: No MIDI output available")
-            except Exception as e:
-                print(f"Audio Debug: pygame initialization failed: {e}")
+            except Exception:
                 self.pygame = None
                 self.pygame_midi = None
                 self.midi_out = None
                 self.active_notes = {}
         else:
-            print("Audio Debug: pygame not available")
             self.pygame = None
             self.pygame_midi = None
             self.midi_out = None
@@ -1957,18 +1951,14 @@ class EmbeddedMidiKeyboard:
 
     def _generate_sine_wave(self, frequency, duration=0.5, volume=0.3):
         """Generate a sine wave for audio synthesis."""
-        print(f"Audio Debug: _generate_sine_wave called - freq: {frequency}, duration: {duration}, volume: {volume}")
         if not PYGAME_AVAILABLE:
-            print("Audio Debug: pygame not available for sine wave generation")
             return None
         
         try:
             import numpy as np
-            print("Audio Debug: numpy imported successfully")
             sample_rate = 22050
             frames = int(duration * sample_rate)
             arr = np.zeros((frames, 2))
-            print(f"Audio Debug: Created array with {frames} frames")
             
             # Generate sine wave
             for i in range(frames):
@@ -1978,14 +1968,11 @@ class EmbeddedMidiKeyboard:
             
             # Convert to pygame Sound
             arr = (arr * 32767).astype(np.int16)
-            sound = pygame.sndarray.make_sound(arr)
-            print("Audio Debug: Successfully created pygame Sound object")
-            return sound
-        except ImportError as e:
-            print(f"Audio Debug: numpy import failed: {e}")
+            return pygame.sndarray.make_sound(arr)
+        except ImportError:
+            # Fallback: numpy not available, no audio synthesis
             return None
-        except Exception as e:
-            print(f"Audio Debug: sine wave generation failed: {e}")
+        except Exception:
             return None
 
     def _midi_to_frequency(self, midi_note):
@@ -1994,36 +1981,25 @@ class EmbeddedMidiKeyboard:
 
     def _play_note(self, semitone, velocity=127):
         note_num = 60 + semitone
-        print(f"Audio Debug: _play_note called - semitone: {semitone}, note_num: {note_num}, velocity: {velocity}")
         
         # Send MIDI data
         if getattr(self, 'midi_out', None):
             try:
                 self.midi_out.note_on(note_num, velocity)
-                print("Audio Debug: MIDI note_on sent successfully")
-            except Exception as e:
-                print(f"Audio Debug: MIDI note_on failed: {e}")
-        else:
-            print("Audio Debug: No MIDI output available")
+            except Exception:
+                pass
         
         # Also generate audio synthesis for immediate playback
         if PYGAME_AVAILABLE and hasattr(self, 'active_notes'):
             try:
-                print("Audio Debug: Attempting audio synthesis...")
                 frequency = self._midi_to_frequency(note_num)
                 volume = velocity / 127.0 * 0.3  # Scale volume
-                print(f"Audio Debug: Frequency: {frequency} Hz, Volume: {volume}")
                 sound = self._generate_sine_wave(frequency, 2.0, volume)  # 2 second duration
                 if sound:
                     channel = sound.play()
                     self.active_notes[semitone] = channel
-                    print("Audio Debug: Audio synthesis played successfully")
-                else:
-                    print("Audio Debug: Failed to generate sine wave")
-            except Exception as e:
-                print(f"Audio Debug: Audio synthesis failed: {e}")
-        else:
-            print("Audio Debug: Audio synthesis not available")
+            except Exception:
+                pass  # Fallback silently if synthesis fails
 
     def _stop_note(self, semitone):
         note_num = 60 + semitone
@@ -2057,84 +2033,39 @@ class EmbeddedMidiKeyboard:
 
     def _get_midi_ports_safe(self):
         """
-        Enhanced MIDI port detection that works better in packaged executables.
-        Tries multiple approaches and includes debugging.
+        Simple MIDI port detection - matches working midiv3.py approach.
         """
-        global mido  # Ensure we can access the global mido variable
-        ports = []
-        
         try:
-            # Method 1: Direct mido call
-            if mido is not None:
+            if MIDO_AVAILABLE:
                 ports = mido.get_input_names()
-                debug_log(f"MIDI Debug: Direct mido.get_input_names() returned: {ports}")
+                debug_log(f"MIDI Debug: Found {len(ports)} MIDI ports: {ports}")
+                return ports
             else:
-                debug_log("MIDI Debug: mido is None")
-            
-            if not ports:
-                # Method 2: Try to initialize backend explicitly
-                try:
-                    import mido.backends.rtmidi
-                    # Force backend initialization
-                    backend = mido.backends.rtmidi.Backend()
-                    ports = backend.get_input_names()
-                    debug_log(f"MIDI Debug: Backend.get_input_names() returned: {ports}")
-                except Exception as e:
-                    debug_log(f"MIDI Debug: Backend initialization failed: {e}")
-            
-            if not ports:
-                # Method 3: Try rtmidi directly
-                try:
-                    import rtmidi
-                    midi_in = rtmidi.MidiIn()
-                    port_count = midi_in.get_port_count()
-                    debug_log(f"MIDI Debug: Direct rtmidi found {port_count} ports")
-                    
-                    for i in range(port_count):
-                        port_name = midi_in.get_port_name(i)
-                        ports.append(port_name)
-                        debug_log(f"MIDI Debug: Port {i}: {port_name}")
-                    
-                    del midi_in  # Clean up
-                except Exception as e:
-                    debug_log(f"MIDI Debug: Direct rtmidi failed: {e}")
-        
+                debug_log("MIDI Debug: mido not available")
+                return []
         except Exception as e:
-            debug_log(f"MIDI Debug: All port detection methods failed: {e}")
-        
-        debug_log(f"MIDI Debug: Final port list: {ports}")
-        return ports
+            debug_log(f"MIDI Debug: Error getting MIDI ports: {e}")
+            return []
 
     def _delayed_midi_init(self):
-        """Initialize MIDI ports after a small delay - helps with packaged executables."""
-        debug_log("MIDI Debug: Starting delayed MIDI initialization...")
+        """Simple MIDI initialization - matches working midiv3.py approach."""
         self.midi_ports = self._get_midi_ports_safe()
         self.midi_dropdown['values'] = self.midi_ports
         if self.midi_ports:
             self.midi_port_var.set(self.midi_ports[0])
             # Auto-start listener with first port
-            try:
-                self.start_midi_listener(port_name=self.midi_ports[0])
-            except Exception as e:
-                print(f"MIDI Debug: Failed to start listener during delayed init: {e}")
-        print("MIDI Debug: Delayed MIDI initialization complete.")
+            self.start_midi_listener(port_name=self.midi_ports[0])
 
     def _refresh_midi_ports(self):
-        """Refresh the MIDI port list - useful for packaged executables."""
-        print("MIDI Debug: Refreshing port list...")
+        """Refresh the MIDI port list - simple approach like midiv3.py."""
         if MIDO_AVAILABLE:
             self.midi_ports = self._get_midi_ports_safe()
             self.midi_dropdown['values'] = self.midi_ports
             if self.midi_ports:
                 self.midi_port_var.set(self.midi_ports[0])
-                # Auto-start listener with first port
-                try:
-                    self.start_midi_listener(port_name=self.midi_ports[0])
-                except Exception as e:
-                    print(f"MIDI Debug: Failed to start listener after refresh: {e}")
+                self.start_midi_listener(port_name=self.midi_ports[0])
             else:
                 self.midi_port_var.set("")
-            print(f"MIDI Debug: Refreshed port list: {self.midi_ports}")
 
     def start_midi_listener(self, port_name=None):
         if not MIDO_AVAILABLE:
