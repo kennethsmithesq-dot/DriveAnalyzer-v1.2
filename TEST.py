@@ -2035,19 +2035,8 @@ class EmbeddedMidiKeyboard:
         """
         Simple MIDI port detection - matches working midiv3.py approach.
         """
-        global mido
         try:
-            debug_log(f"MIDI Debug: MIDO_AVAILABLE = {MIDO_AVAILABLE}")
-            debug_log(f"MIDI Debug: mido module = {mido if MIDO_AVAILABLE else 'None (import failed)'}")
-            
-            if MIDO_AVAILABLE and mido is not None:
-                # Test if mido backend is working
-                try:
-                    import mido.backends.rtmidi
-                    debug_log("MIDI Debug: rtmidi backend import successful")
-                except Exception as e:
-                    debug_log(f"MIDI Debug: rtmidi backend import failed: {e}")
-                
+            if MIDO_AVAILABLE:
                 ports = mido.get_input_names()
                 debug_log(f"MIDI Debug: Found {len(ports)} MIDI ports: {ports}")
                 return ports
@@ -2056,9 +2045,6 @@ class EmbeddedMidiKeyboard:
                 return []
         except Exception as e:
             debug_log(f"MIDI Debug: Error getting MIDI ports: {e}")
-            debug_log(f"MIDI Debug: Exception type: {type(e)}")
-            import traceback
-            debug_log(f"MIDI Debug: Traceback: {traceback.format_exc()}")
             return []
 
     def _delayed_midi_init(self):
@@ -3303,15 +3289,15 @@ class DriveStrengthParametersDialog:
     
     DEFAULT_RULE_PARAMS = {
         "rule1_bass_support": 20,
-        "rule2_tonic_dominant": 10,  # New Factor 2 - conservative default
+        "rule2_tonic_dominant": 50,
         "rule2_selected_tonic": "No Tonic",  # Default: disabled
-        "rule3_root_repetition": 2,
-        "rule4_resolution_max": 10,
-        "rule5_clean_voicing": 10,
-        "rule6_same_chord": 5,
-        "rule6_dominant_prep": 10,
-        "rule7_root_doubled": 5,
-        "rule7_root_tripled": 10
+        "rule3_root_repetition": 20,
+        "rule4_resolution_max": 50,
+        "rule5_clean_voicing": 50,
+        "rule6_same_chord": 33,
+        "rule6_dominant_prep": 50,
+        "rule7_root_doubled": 33,
+        "rule7_root_tripled": 50
     }
     
     def __init__(self, parent, current_strength_map=None, current_rule_params=None):
@@ -3466,9 +3452,7 @@ class DriveStrengthParametersDialog:
             ttk.Label(center_frame, text=label_text, width=35, anchor="center", style="Dialog.TLabel").pack(side=tk.LEFT, expand=True, fill=tk.X)
             
             # Entry with validation
-            # Initialize StringVar with current or default value immediately
-            current_value = self.strength_map.get(chord_symbol, self.DEFAULT_STRENGTH_MAP.get(chord_symbol, 0))
-            var = tk.StringVar(value=str(current_value))
+            var = tk.StringVar()
             self.strength_vars[chord_symbol] = var
             
             entry = ttk.Entry(center_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
@@ -3565,9 +3549,7 @@ class DriveStrengthParametersDialog:
                 # Points label and entry
                 ttk.Label(content_frame, text="Points:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
                 
-                # Initialize StringVar with current or default value immediately
-                current_value = self.rule_params.get(rule_key, self.DEFAULT_RULE_PARAMS.get(rule_key, 0))
-                var = tk.StringVar(value=str(current_value))
+                var = tk.StringVar()
                 self.rule_vars[rule_key] = var
                 
                 entry = ttk.Entry(content_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
@@ -3576,9 +3558,7 @@ class DriveStrengthParametersDialog:
                 # Tonic key selector
                 ttk.Label(content_frame, text="Tonic:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
                 
-                # Initialize tonic StringVar with current or default value immediately
-                current_tonic = self.rule_params.get("rule2_selected_tonic", self.DEFAULT_RULE_PARAMS.get("rule2_selected_tonic", "No Tonic"))
-                tonic_var = tk.StringVar(value=current_tonic)
+                tonic_var = tk.StringVar()
                 self.rule_vars["rule2_selected_tonic"] = tonic_var
                 
                 tonic_keys = ['No Tonic', 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B']
@@ -3593,9 +3573,8 @@ class DriveStrengthParametersDialog:
                 # Standard handling for other factors
                 ttk.Label(content_frame, text="Points:", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(0, 5))
                 
-                # Entry with validation - Initialize StringVar with current or default value immediately
-                current_value = self.rule_params.get(rule_key, self.DEFAULT_RULE_PARAMS.get(rule_key, 0))
-                var = tk.StringVar(value=str(current_value))
+                # Entry with validation
+                var = tk.StringVar()
                 self.rule_vars[rule_key] = var
                 
                 entry = ttk.Entry(content_frame, textvariable=var, width=10, justify="center", style="Dialog.TEntry")
@@ -3609,7 +3588,7 @@ class DriveStrengthParametersDialog:
         scrollbar.pack(side="right", fill="y")
     
     def load_current_values(self):
-        """Load current values into the UI and force update."""
+        """Load current values into the UI."""
         # Load strength values
         for chord_symbol, var in self.strength_vars.items():
             # Use current values if available, otherwise use defaults
@@ -3621,9 +3600,6 @@ class DriveStrengthParametersDialog:
             # Use current values if available, otherwise use defaults
             current_value = self.rule_params.get(rule_key, self.DEFAULT_RULE_PARAMS.get(rule_key, 0))
             var.set(str(current_value))
-        
-        # Force UI update to ensure values are displayed
-        self.window.update_idletasks()
     
     def validate_inputs(self):
         """Validate all input values."""
@@ -3879,11 +3855,9 @@ class EntropyAnalyzer:
         # Use provided parameters or defaults
         self.strength_map = strength_map if strength_map is not None else self._STRENGTH_MAP.copy()
         
-        # Default rule parameters - matches dialog's conservative defaults
+        # Default rule parameters
         default_rule_params = {
             "rule1_bass_support": 20,
-            "rule2_tonic_dominant": 10,
-            "rule2_selected_tonic": "No Tonic",  # Default: disabled
             "rule3_root_repetition": 2,
             "rule4_resolution_max": 10,
             "rule5_clean_voicing": 10,
