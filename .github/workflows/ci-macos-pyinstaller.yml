@@ -56,14 +56,14 @@ jobs:
           set -eux
           source .venv_x86_64/bin/activate
           echo "== PYINSTALLER: APP BUNDLE BUILD ==" > build-app.log
-          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
+          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer "TEST 2.py" \
             --add-data assets/title.png:assets \
             --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
-            --hidden-import=pygame --hidden-import=pygame.midi \
-            --collect-all mido --collect-all rtmidi --icon assets/myicon.icns >> build-app.log 2>&1 || true
+            --hidden-import=mido --hidden-import=mido.backends --hidden-import=mido.backends.rtmidi --hidden-import=mido.backends._rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
+            --hidden-import=pygame --hidden-import=pygame.midi --hidden-import=numpy --hidden-import=pygame.sndarray \
+            --collect-all mido --collect-all rtmidi --collect-submodules mido --collect-submodules rtmidi --icon assets/myicon.icns >> build-app.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
           fi
@@ -158,14 +158,14 @@ jobs:
           set -eux
           source .venv_arm64/bin/activate
           echo "== PYINSTALLER: ARM64 APP BUNDLE BUILD ==" > build-app-arm64.log
-          python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
+          python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer "TEST 2.py" \
             --add-data assets/title.png:assets \
             --add-data assets/ico.png:assets \
             --add-data assets/fonts:assets/fonts \
             --add-data assets/images:assets/images \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
-            --hidden-import=pygame --hidden-import=pygame.midi \
-            --collect-all mido --collect-all rtmidi --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
+            --hidden-import=mido --hidden-import=mido.backends --hidden-import=mido.backends.rtmidi --hidden-import=mido.backends._rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi \
+            --hidden-import=pygame --hidden-import=pygame.midi --hidden-import=numpy --hidden-import=pygame.sndarray \
+            --collect-all mido --collect-all rtmidi --collect-submodules mido --collect-submodules rtmidi --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
           fi
@@ -242,8 +242,8 @@ jobs:
             --add-data "assets/ico.png;assets" `
             --add-data "assets/fonts;assets/fonts" `
             --add-data "assets/images;assets/images" `
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi `
-            --hidden-import=pygame --hidden-import=pygame.midi `
+            --hidden-import=mido --hidden-import=mido.backends --hidden-import=mido.backends.rtmidi --hidden-import=mido.backends._rtmidi --hidden-import=rtmidi --hidden-import=_rtmidi `
+            --hidden-import=pygame --hidden-import=pygame.midi --hidden-import=numpy --hidden-import=pygame.sndarray `
             --collect-all mido --collect-all rtmidi `
             --icon assets/myicon.ico 2>&1 | Tee-Object -FilePath build-exe-windows.log
           if (Test-Path dist/DriveAnalyzer.exe) {
