@@ -25,16 +25,33 @@ from music21 import converter, note, chord as m21chord, meter, stream
 
 # Import MIDI library at top level for PyInstaller compatibility
 try:
+    print("Attempting to import mido...")
     import mido
+    print("mido imported successfully")
+    
+    print("Attempting to import rtmidi...")
     import rtmidi  # Explicitly import the backend for PyInstaller
+    print("rtmidi imported successfully")
+    
     # Import all mido backends explicitly for PyInstaller
     try:
+        print("Attempting to import mido.backends.rtmidi...")
         import mido.backends.rtmidi
+        print("mido.backends.rtmidi imported successfully")
+        
+        print("Attempting to import mido.backends._rtmidi...")
         import mido.backends._rtmidi
-    except ImportError:
+        print("mido.backends._rtmidi imported successfully")
+    except ImportError as e:
+        print(f"Backend import failed: {e}")
         pass  # Some backends may not be available
+    
     MIDO_AVAILABLE = True
-except ImportError:
+    print("MIDO_AVAILABLE set to True")
+except ImportError as e:
+    print(f"MIDO import failed: {e}")
+    import traceback
+    print(f"Full traceback: {traceback.format_exc()}")
     mido = None
     MIDO_AVAILABLE = False
 
