@@ -2035,8 +2035,19 @@ class EmbeddedMidiKeyboard:
         """
         Simple MIDI port detection - matches working midiv3.py approach.
         """
+        global mido
         try:
-            if MIDO_AVAILABLE:
+            debug_log(f"MIDI Debug: MIDO_AVAILABLE = {MIDO_AVAILABLE}")
+            debug_log(f"MIDI Debug: mido module = {mido if MIDO_AVAILABLE else 'None (import failed)'}")
+            
+            if MIDO_AVAILABLE and mido is not None:
+                # Test if mido backend is working
+                try:
+                    import mido.backends.rtmidi
+                    debug_log("MIDI Debug: rtmidi backend import successful")
+                except Exception as e:
+                    debug_log(f"MIDI Debug: rtmidi backend import failed: {e}")
+                
                 ports = mido.get_input_names()
                 debug_log(f"MIDI Debug: Found {len(ports)} MIDI ports: {ports}")
                 return ports
@@ -2045,6 +2056,9 @@ class EmbeddedMidiKeyboard:
                 return []
         except Exception as e:
             debug_log(f"MIDI Debug: Error getting MIDI ports: {e}")
+            debug_log(f"MIDI Debug: Exception type: {type(e)}")
+            import traceback
+            debug_log(f"MIDI Debug: Traceback: {traceback.format_exc()}")
             return []
 
     def _delayed_midi_init(self):
