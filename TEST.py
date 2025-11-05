@@ -457,7 +457,7 @@ class MidiChordAnalyzer(tk.Tk):
 
     def run_analysis(self):
         """Execute full chord analysis pipeline and update UI."""
-        min_duration = {"High": 0.1, "Medium": 0.5, "Low": 1.0}[self.sensitivity]
+        min_duration = {"High": 1.0, "Medium": 0.5, "Low": 0.1}[self.sensitivity]
         self.analyzed_events = None
         self.processed_events = None
         try:
