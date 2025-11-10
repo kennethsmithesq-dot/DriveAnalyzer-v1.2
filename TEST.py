@@ -290,6 +290,27 @@ class MidiChordAnalyzer(tk.Tk):
         self.build_ui()
         self.show_splash()
 
+    def get_effective_priority_list(self):
+        """Generate priority list based on strength values (custom or default)"""
+        # Default strength values (same as in DriveStrengthParametersDialog)
+        default_strengths = {
+            "7": 100, "7b5": 90, "7#5": 80, "m7": 70, "ø7": 65,
+            "7m9noroot": 65, "7no3": 55, "7no5": 55, "7noroot": 50,
+            "aug": 40, "": 40, "m": 35, "maj7": 30, "mMaj7": 25
+        }
+        
+        # Use custom settings if available, otherwise use defaults
+        strength_map = self.custom_strength_map or default_strengths
+        
+        # Sort all chord types by strength (highest first)
+        sorted_chords = sorted(
+            strength_map.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        
+        return [chord_type for chord_type, strength in sorted_chords]
+
 
 
     def build_ui(self):
@@ -1195,7 +1216,10 @@ class MidiChordAnalyzer(tk.Tk):
                 if chord_name.startswith(n):
                     base = chord_name.replace(n, 'C')
                     break
-            return PRIORITY.index(base) if base in PRIORITY else 999
+            # Remove the 'C' prefix to get the chord quality
+            chord_quality = base[1:] if base.startswith('C') else base
+            priority_list = self.get_effective_priority_list()
+            return priority_list.index(chord_quality) if chord_quality in priority_list else 999
 
         def dedupe_chords_by_priority(chords_dict: Dict[str, Any]) -> Dict[str, str]:
             result = {}
@@ -1222,10 +1246,15 @@ class MidiChordAnalyzer(tk.Tk):
                 if not root:
                     continue
                 base_chord = chord.replace(root, 'C')
-                current_priority = PRIORITY.index(base_chord) if base_chord in PRIORITY else 999
+                # Extract chord quality (remove 'C' prefix)
+                chord_quality = base_chord[1:] if base_chord.startswith('C') else base_chord
+                priority_list = self.get_effective_priority_list()
+                current_priority = priority_list.index(chord_quality) if chord_quality in priority_list else 999
                 prev_chord = chords_by_root.get(root)
                 if prev_chord:
-                    prev_priority = PRIORITY.index(prev_chord.replace(root, 'C')) if prev_chord.replace(root, 'C') in PRIORITY else 999
+                    prev_base = prev_chord.replace(root, 'C')
+                    prev_quality = prev_base[1:] if prev_base.startswith('C') else prev_base
+                    prev_priority = priority_list.index(prev_quality) if prev_quality in priority_list else 999
                     if current_priority < prev_priority:
                         chords_by_root[root] = chord
                 else:
@@ -1410,10 +1439,14 @@ class MidiChordAnalyzer(tk.Tk):
             finally:
                 del frame
 
-            for name in PRIORITY:
-                if name in TRIADS and not self.include_triads:
+            for name in self.get_effective_priority_list():
+                # Convert chord quality back to full chord name for CHORDS lookup
+                full_name = 'C' + name
+                if full_name in TRIADS and not self.include_triads:
                     continue
-                chord_pattern = set(CHORDS[name])
+                if full_name not in CHORDS:
+                    continue
+                chord_pattern = set(CHORDS[full_name])
                 # Special handling for 'no3' chords: only match if third is truly absent
                 if "no3" in name:
                     third_major = (root + 4) % 12
@@ -1431,26 +1464,30 @@ class MidiChordAnalyzer(tk.Tk):
                     if third_present:
                         continue  # Third is present, skip 'no3' chord
                     if chord_pattern.issubset(normalized):
-                        matched = name.replace('C', self.semitone_to_note(root))
+                        matched = full_name.replace('C', self.semitone_to_note(root))
                         chords_found.append(matched)
                         break
                 else:
                     if chord_pattern.issubset(normalized):
-                        matched = name.replace('C', self.semitone_to_note(root))
+                        matched = full_name.replace('C', self.semitone_to_note(root))
                         chords_found.append(matched)
                         break
 
         # Second pass: try "noroot" style chords where the root pitch-class is absent
         for root in sorted(set(range(12)) - set(semitones)):
             normalized = {(n - root) % 12 for n in semitones}
-            for name in PRIORITY:
+            for name in self.get_effective_priority_list():
                 if "noroot" not in name:
                     continue
-                if name in TRIADS and not self.include_triads:
+                # Convert chord quality back to full chord name for CHORDS lookup
+                full_name = 'C' + name
+                if full_name in TRIADS and not self.include_triads:
                     continue
-                chord_pattern = set(CHORDS[name])
+                if full_name not in CHORDS:
+                    continue
+                chord_pattern = set(CHORDS[full_name])
                 if chord_pattern == normalized:
-                    matched = name.replace('C', self.semitone_to_note(root))
+                    matched = full_name.replace('C', self.semitone_to_note(root))
                     chords_found.append(matched)
                     break
 
@@ -1582,7 +1619,8 @@ class MidiChordAnalyzer(tk.Tk):
                 if chord_name.startswith(root):
                     base = chord_name[len(root):]
                     break
-            return PRIORITY.index(base) if base in PRIORITY else 999
+            priority_list = self.get_effective_priority_list()
+            return priority_list.index(base) if base in priority_list else 999
 
         event_items = sorted(events.items())
         processed_events: List[Tuple[Tuple[int,int,str], Dict[str, Any], Any, Set[int], Set[int]]] = []
@@ -1599,10 +1637,15 @@ class MidiChordAnalyzer(tk.Tk):
                 if not root:
                     continue
                 base_chord = chord.replace(root, 'C')
-                current_priority = PRIORITY.index(base_chord) if base_chord in PRIORITY else 999
+                # Extract chord quality (remove 'C' prefix)
+                chord_quality = base_chord[1:] if base_chord.startswith('C') else base_chord
+                priority_list = self.get_effective_priority_list()
+                current_priority = priority_list.index(chord_quality) if chord_quality in priority_list else 999
                 prev_chord = chords_by_root.get(root)
                 if prev_chord:
-                    prev_priority = PRIORITY.index(prev_chord.replace(root, 'C')) if prev_chord.replace(root, 'C') in PRIORITY else 999
+                    prev_base = prev_chord.replace(root, 'C')
+                    prev_quality = prev_base[1:] if prev_base.startswith('C') else prev_base
+                    prev_priority = priority_list.index(prev_quality) if prev_quality in priority_list else 999
                     if current_priority < prev_priority:
                         chords_by_root[root] = chord
                 else:
