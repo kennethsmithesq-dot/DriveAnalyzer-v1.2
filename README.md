@@ -5,3 +5,5 @@ The method of musical analysis – “drive analysis” – is explained at www.
 As an advanced feature, the program further allows users to track “entropy” across the course of a piece as described in the article, “The Enigma of Entropy in Extended Tonality” (Music Theory Spectrum 43, no. 1, 2021).
 
 The programme takes the form of a single executable file, and the downloadable zip bundles contain a manual.pdf file and  a foler of xml sample files.
+
+pip install music21 mido python-rtmidi pygame pillow reportlab numpy pyinstaller matplotlib
