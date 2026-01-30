@@ -252,13 +252,15 @@ class MidiChordAnalyzer(tk.Tk):
 
         # Analysis algorithm settings
         self.include_triads = True
-        self.sensitivity = "Medium"
+        self.sensitivity = "Low"
+        self.min_duration = 0.0
         self.remove_repeats = True
         self.include_anacrusis = True
         self.include_non_drive_events = True
         self.arpeggio_searching = True
         self.neighbour_notes_searching = True
         self.arpeggio_block_similarity_threshold = 0.5
+        self.pedal_mode = "Off"  # "Off", "Every Beat", "Strong Beats", "Every Bar", "Half Bar"
         
         # Time-segment analysis settings
         self.analysis_mode = "event"  # "event" or "time_segment"
@@ -478,7 +480,7 @@ class MidiChordAnalyzer(tk.Tk):
 
     def run_analysis(self):
         """Execute full chord analysis pipeline and update UI."""
-        min_duration = {"High": 1.0, "Medium": 0.5, "Low": 0.1}[self.sensitivity]
+        min_duration = getattr(self, 'min_duration', 0.0)
         self.analyzed_events = None
         self.processed_events = None
         try:
@@ -525,48 +527,143 @@ class MidiChordAnalyzer(tk.Tk):
         """Open analysis settings dialog with algorithm options and sensitivity controls."""
         dialog = tk.Toplevel(self)
         dialog.title("Analysis Settings")
-        dialog.geometry("450x600")
-        dialog.configure(bg="white")  # Set white background
+        dialog.geometry("450x850")
+        dialog.configure(bg="#f5f5f5")  # Set light grey background
 
+        # Load and display settings title image at top center
+        try:
+            from PIL import Image, ImageTk
+            title_img_path = resource_path(os.path.join("assets", "images", "settings_title.png"))
+            title_img = Image.open(title_img_path)
+            title_photo = ImageTk.PhotoImage(title_img)
+            title_label = tk.Label(dialog, image=title_photo, bd=0, bg="#f5f5f5", highlightthickness=0)
+            title_label.image = title_photo  # Keep a reference
+            title_label.pack(pady=(10, 15))
+        except Exception as e:
+            print(f"Warning: Could not load settings title image: {e}")
+            # Fallback text title if image fails
+            fallback_title = tk.Label(dialog, text="Analysis Settings", font=("Arial", 16, "bold"), 
+                                    bg="#f5f5f5", fg="black")
+            fallback_title.pack(pady=(10, 15))
+
+        # Create scrollable frame structure
+        main_frame = tk.Frame(dialog, bg="#f5f5f5")
+        main_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(main_frame, bg="#f5f5f5", highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#f5f5f5")
+        
+        # Configure scrolling
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        # Load info button image
+        try:
+            from PIL import Image, ImageTk
+            info_img_path = resource_path(os.path.join("assets", "images", "info_button.png"))
+            info_img = Image.open(info_img_path)
+            info_photo = ImageTk.PhotoImage(info_img)
+        except Exception as e:
+            print(f"Warning: Could not load info button image: {e}")
+            info_photo = None
+        
         # Configure styles for settings dialog
         from tkinter import ttk
         style = ttk.Style()
-        style.configure("Settings.TCheckbutton", background="white", foreground="black")
-        style.configure("Settings.TLabel", background="white", foreground="black")
-        style.configure("Settings.TFrame", background="white")
+        style.configure("Settings.TCheckbutton", background="#f5f5f5", foreground="black")
+        style.configure("Settings.TLabel", background="#f5f5f5", foreground="black")
+        style.configure("Settings.Heading.TLabel", background="#f5f5f5", foreground="black", font=("Arial", 12))
+        style.configure("Settings.Info.TLabel", background="#1f4788", foreground="white", font=("Arial", 8, "bold"), 
+                       relief="flat", borderwidth=0, anchor="center", width=2, padding=(8, 6))
+        style.configure("Settings.TFrame", background="#f5f5f5")
         style.configure("Settings.TButton", background="white", foreground="black")
-        style.configure("Settings.TSeparator", background="white")
-        style.configure("Settings.TRadiobutton", background="white", foreground="black")
+        style.configure("Settings.TSeparator", background="#cccccc")
+        style.configure("Settings.TRadiobutton", background="#f5f5f5", foreground="black")
         style.configure("Settings.TCombobox", background="white", foreground="black")
 
-        # Analysis Mode selection
-        ttk.Label(dialog, text="Analysis Mode:", style="Settings.TLabel").pack(anchor="w", padx=12, pady=(8, 4))
+        # Create function for adding setting sections with tooltips
+        def create_setting_section(parent, title, tooltip, control_widget):
+            # Heading frame with title and info symbol
+            heading_frame = ttk.Frame(parent, style="Settings.TFrame")
+            heading_frame.pack(fill="x", padx=12, pady=(8, 2))
+            
+            # Title label
+            title_label = ttk.Label(heading_frame, text=title, style="Settings.Heading.TLabel")
+            title_label.pack(side="left")
+            
+            # Info symbol with tooltip - PNG image
+            if info_photo:
+                info_label = tk.Label(heading_frame, image=info_photo, bd=0, bg="#f5f5f5", highlightthickness=0, cursor="hand2")
+                info_label.image = info_photo  # Keep a reference
+            else:
+                # Fallback to text if image fails to load
+                info_label = ttk.Label(heading_frame, text="i", style="Settings.Info.TLabel")
+            info_label.pack(side="left", padx=(8, 0))
+            
+            # Add tooltip with proper hide on mouse leave
+            tooltip_window_ref = [None]  # Use list to allow modification in nested functions
+            
+            def show_tooltip(event):
+                # Hide any existing tooltip first
+                if tooltip_window_ref[0]:
+                    try:
+                        tooltip_window_ref[0].destroy()
+                    except:
+                        pass
+                
+                # Simple tooltip implementation
+                tooltip_window = tk.Toplevel(parent)
+                tooltip_window_ref[0] = tooltip_window
+                tooltip_window.wm_overrideredirect(True)
+                tooltip_window.configure(bg="#333333")
+                x = event.widget.winfo_rootx() + 20
+                y = event.widget.winfo_rooty() + 20
+                tooltip_window.geometry(f"+{x}+{y}")
+                
+                label = tk.Label(tooltip_window, text=tooltip, bg="#333333", fg="white", 
+                               font=("Arial", 9), wraplength=250, justify="left", padx=8, pady=4)
+                label.pack()
+            
+            def hide_tooltip(event=None):
+                if tooltip_window_ref[0]:
+                    try:
+                        tooltip_window_ref[0].destroy()
+                        tooltip_window_ref[0] = None
+                    except:
+                        pass
+            
+            info_label.bind("<Enter>", show_tooltip)
+            info_label.bind("<Leave>", hide_tooltip)
+            
+            # Control container
+            control_frame = ttk.Frame(parent, style="Settings.TFrame")
+            control_frame.pack(fill="x", padx=24, pady=(0, 4))
+            
+            return control_frame
         
+        pad_opts = dict(anchor="w", padx=12, pady=6)
+        
+        # Analysis Mode
         analysis_mode_var = tk.StringVar(value=getattr(self, 'analysis_mode', 'event'))
         segment_size_var = tk.StringVar(value=getattr(self, 'segment_size', 'beats'))
-
-        # Event-based mode radio button
-        ttk.Radiobutton(dialog, text="Event-based (current method)", variable=analysis_mode_var, 
-                       value="event", style="Settings.TRadiobutton").pack(anchor="w", padx=24, pady=2)
         
-        # Time-segment mode radio button and options
-        time_segment_frame = ttk.Frame(dialog, style="Settings.TFrame")
-        time_segment_frame.pack(fill="x", padx=24, pady=2)
-        
-        ttk.Radiobutton(time_segment_frame, text="Time-segment based", variable=analysis_mode_var,
-                       value="time_segment", style="Settings.TRadiobutton").pack(side="left")
-        
-        # Segment size dropdown
-        ttk.Label(time_segment_frame, text=" - Size:", style="Settings.TLabel").pack(side="left", padx=(10, 5))
-        segment_dropdown = ttk.Combobox(time_segment_frame, textvariable=segment_size_var,
-                                      values=["half_beats", "beats", "bars"], state="readonly", width=12,
-                                      style="Settings.TCombobox")
-        segment_dropdown.pack(side="left")
-
-        # Separator line
-        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
-
-        # Analysis algorithm toggles
+        # Analysis algorithm toggles - define these early so they can be referenced
         include_triads_var = tk.BooleanVar(value=self.include_triads)
         remove_repeats_var = tk.BooleanVar(value=self.remove_repeats)
         include_anacrusis_var = tk.BooleanVar(value=self.include_anacrusis)
@@ -574,22 +671,7 @@ class MidiChordAnalyzer(tk.Tk):
         neighbour_notes_var = tk.BooleanVar(value=getattr(self, 'neighbour_notes_searching', True))
         include_non_drive_var = tk.BooleanVar(value=self.include_non_drive_events)
 
-        # Merging sensitivity slider (7 positions: 1=minimal merging, 7=aggressive merging)
-        sensitivity_scale_var = tk.IntVar(value=getattr(self, 'collapse_sensitivity_pos', 3))
-
-        # Create checkboxes and store references for enabling/disabling
-        pad_opts = dict(anchor="w", padx=12, pady=6)
-        ttk.Checkbutton(dialog, text="Include triads", variable=include_triads_var, style="Settings.TCheckbutton").pack(**pad_opts)
-        anacrusis_cb = ttk.Checkbutton(dialog, text="Include anacrusis", variable=include_anacrusis_var, style="Settings.TCheckbutton")
-        anacrusis_cb.pack(**pad_opts)
-        arpeggio_cb = ttk.Checkbutton(dialog, text="Arpeggio searching", variable=arpeggio_searching_var, style="Settings.TCheckbutton")
-        arpeggio_cb.pack(**pad_opts)
-        neighbour_cb = ttk.Checkbutton(dialog, text="Neighbour notes", variable=neighbour_notes_var, style="Settings.TCheckbutton")
-        neighbour_cb.pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Remove repeated patterns", variable=remove_repeats_var, style="Settings.TCheckbutton").pack(**pad_opts)
-        ttk.Checkbutton(dialog, text="Include non-drive events", variable=include_non_drive_var, style="Settings.TCheckbutton").pack(**pad_opts)
-
-        # Function to update checkbox states based on analysis mode
+        # Function to update checkbox states based on analysis mode - define early so radio buttons can reference it
         def update_checkbox_states():
             mode = analysis_mode_var.get()
             if mode == "time_segment":
@@ -605,41 +687,150 @@ class MidiChordAnalyzer(tk.Tk):
                 anacrusis_cb.config(state="normal")
                 arpeggio_cb.config(state="normal")
                 neighbour_cb.config(state="normal")
+        
+        analysis_mode_frame = create_setting_section(scrollable_frame, "Analysis Mode", 
+            "Choose between event-based analysis (recommended, detects actual musical events) or time-segment analysis (divides music into regular time intervals)", None)
 
-        # Bind radio button changes to update function by updating their commands
-        for widget in time_segment_frame.winfo_children():
-            if isinstance(widget, ttk.Radiobutton):
-                widget.configure(command=update_checkbox_states)
-        # Also bind the event-based radio button
-        for widget in dialog.winfo_children():
-            if isinstance(widget, ttk.Radiobutton):
-                widget.configure(command=update_checkbox_states)
+        # Event-based mode radio button
+        event_radio = ttk.Radiobutton(analysis_mode_frame, text="Event-based (current method)", variable=analysis_mode_var, 
+                       value="event", style="Settings.TRadiobutton", command=update_checkbox_states)
+        event_radio.pack(anchor="w", pady=2)
+        
+        # Time-segment mode radio button and options
+        time_segment_frame = ttk.Frame(analysis_mode_frame, style="Settings.TFrame")
+        time_segment_frame.pack(fill="x", pady=2)
+        
+        time_segment_radio = ttk.Radiobutton(time_segment_frame, text="Time-segment based", variable=analysis_mode_var,
+                       value="time_segment", style="Settings.TRadiobutton", command=update_checkbox_states)
+        time_segment_radio.pack(side="left")
+        
+        # Segment size dropdown
+        ttk.Label(time_segment_frame, text="Size:", style="Settings.TLabel").pack(side="left", padx=(10, 5))
+        segment_dropdown = ttk.Combobox(time_segment_frame, textvariable=segment_size_var,
+                                      values=["half_beats", "beats", "bars"], state="readonly", width=12,
+                                      style="Settings.TCombobox")
+        segment_dropdown.pack(side="left")
+        
+        # Include Triads
+        triads_frame = create_setting_section(scrollable_frame, "Include Triads", 
+            "Detect and analyze three-note chords (triads) in addition to seventh chords", None)
+        ttk.Checkbutton(triads_frame, text="Enabled", variable=include_triads_var, style="Settings.TCheckbutton").pack(anchor="w")
+        
+        # Include Anacrusis
+        anacrusis_frame = create_setting_section(scrollable_frame, "Include Anacrusis", 
+            "Analyze pickup notes (anacruses) that occur before the main beat", None)
+        anacrusis_cb = ttk.Checkbutton(anacrusis_frame, text="Enabled", variable=include_anacrusis_var, style="Settings.TCheckbutton")
+        anacrusis_cb.pack(anchor="w")
+        
+        # Arpeggio Searching
+        arpeggio_frame = create_setting_section(scrollable_frame, "Arpeggio Searching", 
+            "Detect arpeggiated chords (broken chords played in sequence) and group them together", None)
+        arpeggio_cb = ttk.Checkbutton(arpeggio_frame, text="Enabled", variable=arpeggio_searching_var, style="Settings.TCheckbutton")
+        arpeggio_cb.pack(anchor="w")
+        
+        # Neighbour Notes
+        neighbour_frame = create_setting_section(scrollable_frame, "Neighbour Notes", 
+            "Include neighbour note analysis (non-chord tones that move by step and return)", None)
+        neighbour_cb = ttk.Checkbutton(neighbour_frame, text="Enabled", variable=neighbour_notes_var, style="Settings.TCheckbutton")
+        neighbour_cb.pack(anchor="w")
+        
+        # Remove Repeated Patterns
+        repeats_frame = create_setting_section(scrollable_frame, "Remove Repeated Patterns", 
+            "Eliminate duplicate harmonic events that occur consecutively", None)
+        ttk.Checkbutton(repeats_frame, text="Enabled", variable=remove_repeats_var, style="Settings.TCheckbutton").pack(anchor="w")
+        
+        # Include Non-Drive Events
+        nondrive_frame = create_setting_section(scrollable_frame, "Include Non-Drive Events", 
+            "Include events of 3 pitches or more, which don't contribute to harmonic drive (e.g. trichords that don't form diatonic chords). The bass note only will be recorded on the grid in a column of its own.", None)
+        ttk.Checkbutton(nondrive_frame, text="Enabled", variable=include_non_drive_var, style="Settings.TCheckbutton").pack(anchor="w")
+        
+        # Sustain Pedal
+        pedal_frame = create_setting_section(scrollable_frame, "Sustain Pedal", 
+            "Simulate sustain pedal to hold notes across time boundaries, creating richer harmonic analysis", None)
+        
+        pedal_enabled_var = tk.BooleanVar(value=getattr(self, 'pedal_mode', 'Off') != 'Off')
+        
+        # Put checkbox and mode dropdown on the same line
+        pedal_combo_frame = ttk.Frame(pedal_frame, style="Settings.TFrame")
+        pedal_combo_frame.pack(fill="x")
+        
+        pedal_cb = ttk.Checkbutton(pedal_combo_frame, text="Enabled", variable=pedal_enabled_var, style="Settings.TCheckbutton")
+        pedal_cb.pack(side="left")
+        
+        pedal_mode_var = tk.StringVar(value=getattr(self, 'pedal_mode', 'Auto') if getattr(self, 'pedal_mode', 'Off') != 'Off' else 'Auto')
+        pedal_options = ["Every Beat", "Strong Beats", "Half Bar", "Every Bar", "Auto"]
+        ttk.Label(pedal_combo_frame, text="Mode:", style="Settings.TLabel").pack(side="left", padx=(20, 5))
+        pedal_combo = ttk.Combobox(pedal_combo_frame, textvariable=pedal_mode_var, values=pedal_options, state="readonly", width=12)
+        pedal_combo.pack(side="left")
+        
+        def update_pedal_combo_state():
+            if pedal_enabled_var.get():
+                pedal_combo.config(state="readonly")
+            else:
+                pedal_combo.config(state="disabled")
+        
+        pedal_cb.config(command=update_pedal_combo_state)
+        update_pedal_combo_state()  # Set initial state
+        
+        # Filter Short Durations
+        duration_frame = create_setting_section(scrollable_frame, "Duration Filter", 
+            "Exclude very short notes from analysis to focus on structurally significant events", None)
+        
+        duration_filter_enabled_var = tk.BooleanVar(value=getattr(self, 'min_duration', 0.0) > 0.0)
+        
+        # Put checkbox and dropdown on the same line
+        duration_combo_frame = ttk.Frame(duration_frame, style="Settings.TFrame")
+        duration_combo_frame.pack(fill="x")
+        
+        duration_filter_cb = ttk.Checkbutton(duration_combo_frame, text="Enabled", variable=duration_filter_enabled_var, style="Settings.TCheckbutton")
+        duration_filter_cb.pack(side="left")
+        
+        # Map current min_duration to duration threshold
+        current_min_duration = getattr(self, 'min_duration', 0.0)
+        duration_to_name = {0.125: "32nd notes", 0.25: "16th notes", 0.5: "8th notes", 1.0: "Quarter notes"}
+        current_duration = duration_to_name.get(current_min_duration, "8th notes")
+        duration_threshold_var = tk.StringVar(value=current_duration)
+        duration_options = ["32nd notes", "16th notes", "8th notes", "Quarter notes"]
+        ttk.Label(duration_combo_frame, text="Shorter than:", style="Settings.TLabel").pack(side="left", padx=(20, 5))
+        duration_combo = ttk.Combobox(duration_combo_frame, textvariable=duration_threshold_var, values=duration_options, state="readonly", width=12)
+        duration_combo.pack(side="left")
+        
+        def update_duration_combo_state():
+            if duration_filter_enabled_var.get():
+                duration_combo.config(state="readonly")
+            else:
+                duration_combo.config(state="disabled")
+        
+        duration_filter_cb.config(command=update_duration_combo_state)
+        update_duration_combo_state()  # Set initial state
+        
+        # Event Change Sensitivity
+        sensitivity_frame = create_setting_section(scrollable_frame, "Event Change Sensitivity", 
+            "Control how sensitive the analysis is to chord fluctuations - fine detail captures every change, broad grouping focuses on significant shifts", None)
+        
+        # Map current position to sensitivity level
+        current_pos = getattr(self, 'collapse_sensitivity_pos', 3)
+        pos_to_sensitivity = {1: "Finest detail", 2: "Fine detail", 3: "Standard", 5: "Broad grouping", 7: "Broadest strokes"}
+        sensitivity_options = [
+            "Finest detail - record every variation as separate events",
+            "Fine detail - capture subtle differences between events", 
+            "Standard - balanced detection of meaningful changes",
+            "Broad grouping - merge similar events, focus on clear changes",
+            "Broadest strokes - group aggressively, show only major shifts"
+        ]
+        
+        # Find current setting
+        current_sensitivity_short = pos_to_sensitivity.get(current_pos, "Standard")
+        current_sensitivity_full = next((opt for opt in sensitivity_options if opt.startswith(current_sensitivity_short)), sensitivity_options[2])
+        
+        event_sensitivity_var = tk.StringVar(value=current_sensitivity_full)
+        event_sensitivity_combo = ttk.Combobox(sensitivity_frame, textvariable=event_sensitivity_var, values=sensitivity_options, state="readonly")
+        event_sensitivity_combo.pack(fill="x")
 
         # Initialize checkbox states based on current mode
         update_checkbox_states()
-
-        # Separator line
-        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
-
-        ttk.Label(dialog, text="Merge similar events together (1=minimal merging, 7=high merging):", style="Settings.TLabel").pack(anchor="w", padx=12, pady=(8, 0))
-        sens_scale = tk.Scale(dialog, from_=1, to=7, orient="horizontal", variable=sensitivity_scale_var, bg="white")
-        sens_scale.pack(fill="x", padx=12)
-
-        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
-
-        ttk.Label(dialog, text="Note detail (1=fewer details, 5=more details):", style="Settings.TLabel").pack(anchor="w", padx=12, pady=(8, 0))
-        current_sensitivity = getattr(self, 'sensitivity', 'Medium')
-        sensitivity_to_pos = {"Low": 1, "Medium": 3, "High": 5}
-        detail_scale_var = tk.IntVar(value=sensitivity_to_pos.get(current_sensitivity, 3))
-        detail_scale = tk.Scale(dialog, from_=1, to=5, orient="horizontal", variable=detail_scale_var, bg="white")
-        detail_scale.pack(fill="x", padx=12)
         
-        ttk.Separator(dialog, orient="horizontal", style="Settings.TSeparator").pack(fill="x", padx=12, pady=8)
-        
-        # Drive Strength Configuration button
-        strength_btn_frame = ttk.Frame(dialog, style="Settings.TFrame")
-        strength_btn_frame.pack(fill="x", padx=12, pady=(8, 12))
-        
+        # Drive Strength Configuration
         def open_strength_dialog():
             strength_dialog = DriveStrengthParametersDialog(
                 dialog, 
@@ -657,9 +848,12 @@ class MidiChordAnalyzer(tk.Tk):
                     except Exception:
                         pass
         
+        strength_frame = create_setting_section(scrollable_frame, "Drive Strength Configuration", 
+            "Customize the harmonic drive strength values and analysis rules for different chord types", None)
+        
         ttk.Button(
-            strength_btn_frame, 
-            text="Drive Strength Configuration...", 
+            strength_frame, 
+            text="Configure", 
             command=open_strength_dialog,
             style="Settings.TButton"
         ).pack(anchor="w")
@@ -685,13 +879,33 @@ class MidiChordAnalyzer(tk.Tk):
                 
             self.include_non_drive_events = include_non_drive_var.get()
 
-            # Read detail slider and convert to sensitivity
-            detail_pos = int(detail_scale_var.get())
-            pos_to_sensitivity = {1: "Low", 2: "Low", 3: "Medium", 4: "High", 5: "High"}
-            self.sensitivity = pos_to_sensitivity.get(detail_pos, "Medium")
+            # Read duration filtering settings
+            if duration_filter_enabled_var.get():
+                duration_map = {
+                    "32nd notes": 0.125,
+                    "16th notes": 0.25, 
+                    "8th notes": 0.5,
+                    "Quarter notes": 1.0
+                }
+                self.min_duration = duration_map.get(duration_threshold_var.get(), 0.5)
+                self.sensitivity = "Medium"  # Keep for backwards compatibility
+            else:
+                self.min_duration = 0.0
+                self.sensitivity = "Low"
+            
+            # Read pedal mode setting directly from dropdown
+            self.pedal_mode = pedal_mode_var.get()
 
-            # Read merge slider position and persist it
-            pos = int(sensitivity_scale_var.get())
+            # Read event sensitivity setting and map to slider position
+            selected_sensitivity = event_sensitivity_var.get()
+            sensitivity_to_pos = {
+                "Finest detail - record every variation as separate events": 1,
+                "Fine detail - capture subtle differences between events": 2,
+                "Standard - balanced detection of meaningful changes": 3,
+                "Broad grouping - merge similar events, focus on clear changes": 5,
+                "Broadest strokes - group aggressively, show only major shifts": 7
+            }
+            pos = sensitivity_to_pos.get(selected_sensitivity, 3)
             self.collapse_sensitivity_pos = pos
             self.collapse_similar_events = True
 
@@ -738,10 +952,24 @@ class MidiChordAnalyzer(tk.Tk):
             except Exception:
                 pass
 
-        # Separator line
-        ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=12, pady=8)
+        # Add settings apply instruction image at bottom
+        try:
+            apply_img_path = resource_path(os.path.join("assets", "images", "settings_apply.png"))
+            apply_img = Image.open(apply_img_path)
+            # Resize to 400 pixels wide, maintaining aspect ratio
+            original_width, original_height = apply_img.size
+            new_width = 400
+            new_height = int((new_width / original_width) * original_height)
+            apply_img = apply_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            apply_photo = ImageTk.PhotoImage(apply_img)
+            apply_label = tk.Label(scrollable_frame, image=apply_photo, bd=0, bg="#f5f5f5", highlightthickness=0)
+            apply_label.image = apply_photo  # Keep a reference
+            apply_label.pack(pady=(20, 15), anchor="e")
+        except Exception as e:
+            print(f"Warning: Could not load settings apply image: {e}")
 
-        ttk.Button(dialog, text="Apply", command=apply_settings, style="Settings.TButton").pack(pady=(6, 12))
+        # Set up auto-apply on dialog close
+        dialog.protocol("WM_DELETE_WINDOW", apply_settings)
 
     def display_results(self, lines: list[str] = None):
         self.result_text.config(state="normal")
@@ -921,13 +1149,78 @@ class MidiChordAnalyzer(tk.Tk):
             beats = offset / beat_len
             return int(beats // num) + 1, int(beats % num) + 1, f"{num}/{denom}"
 
+        def is_pedal_lift_point(offset, pedal_mode):
+            """Determine if pedal lifts at this time point based on mode."""
+            if pedal_mode == "Off":
+                return False
+            
+            # Auto mode uses intelligent detection (handled in main loop)
+            if pedal_mode == "Auto":
+                return False  # Actual logic handled separately
+            
+            bar, beat, ts = offset_to_bar_beat(offset)
+            num, denom = get_time_signature(offset)
+            beat_len = 4.0 / denom  # quarter lengths per beat
+            
+            # Calculate the exact start time of this bar
+            bar_start_offset = None
+            bars_before = 0
+            for i, (t_off, n, d) in enumerate(time_signatures):
+                next_off = time_signatures[i + 1][0] if i + 1 < len(time_signatures) else None
+                if next_off is None or offset < next_off:
+                    # This time signature applies to our offset
+                    segment_start = t_off
+                    beats_since_start = (offset - t_off) / beat_len
+                    bars_in_this_segment = int(beats_since_start // n)
+                    bar_start_offset = t_off + (bars_in_this_segment * n * beat_len)
+                    break
+                else:
+                    # Add complete bars from this segment
+                    segment_beats = (next_off - t_off) / beat_len
+                    bars_before += int(segment_beats // n)
+            
+            if bar_start_offset is None:
+                return False
+            
+            # Only lift pedal at exact bar starts
+            tolerance = 0.001  # Small tolerance for floating point precision
+            is_exact_bar_start = abs(offset - bar_start_offset) < tolerance
+            
+            if pedal_mode == "Every Beat":
+                # Pedal lifts at every beat boundary (exact beat starts)
+                beat_start_offset = bar_start_offset + ((beat - 1) * beat_len)
+                return abs(offset - beat_start_offset) < tolerance
+            elif pedal_mode == "Strong Beats":
+                # Pedal lifts at beats 1 and halfway point (exact beat starts)
+                if beat == 1 or beat == (num // 2) + 1:
+                    beat_start_offset = bar_start_offset + ((beat - 1) * beat_len)
+                    return abs(offset - beat_start_offset) < tolerance
+            elif pedal_mode == "Every Bar":
+                # Pedal lifts only at exact bar starts
+                return is_exact_bar_start
+            elif pedal_mode == "Half Bar":
+                # Pedal lifts at bar start and exact halfway through bar
+                if beat == 1:
+                    return is_exact_bar_start
+                elif beat == (num // 2) + 1:
+                    beat_start_offset = bar_start_offset + ((beat - 1) * beat_len)
+                    return abs(offset - beat_start_offset) < tolerance
+            return False
+
         note_events = []
         single_notes = []  # (start, end, pitch)
         for elem in flat_notes:
             if isinstance(elem, (note.Note, m21chord.Chord)):
-                duration = max(elem.quarterLength, min_duration)
+                original_duration = elem.quarterLength
+                
+                # Filter out notes shorter than min_duration
+                if original_duration < min_duration:
+                    continue  # Skip this note entirely
+                
+                duration = original_duration
                 start = elem.offset
                 end = start + duration
+                
                 if isinstance(elem, m21chord.Chord):
                     pitches = [p.midi for p in elem.pitches]
                 else:
@@ -935,7 +1228,7 @@ class MidiChordAnalyzer(tk.Tk):
                 note_events.append((start, end, pitches))
                 # Collect single melodic notes (not part of a chord, not doubled at start)
                 if isinstance(elem, note.Note):
-                    others_at_start = [e for e in flat_notes if e is not elem and hasattr(e, 'offset') and e.offset == start]
+                    others_at_start = [e for e in flat_notes if e is not elem and hasattr(e, 'offset') and e.offset == start and e.quarterLength >= min_duration]
                     if not others_at_start:
                         single_notes.append((start, end, pitches[0]))
 
@@ -946,30 +1239,102 @@ class MidiChordAnalyzer(tk.Tk):
         events = {}
         active_notes = set()
         active_pitches = set()
+        
+        # Pedal-sustained notes (notes that started while pedal was down)
+        pedal_sustained_notes = set()
+        pedal_sustained_pitches = set()
+        last_pedal_lift_time = None
+        
+        # Auto pedal tracking
+        auto_pedal_collection = set()  # All pitch classes since last auto pedal lift
+        auto_last_lift_time = 0.0
 
         # === PHASE 1: Block Chord Detection ===
         for i, time in enumerate(time_points):
 
+            # Check if pedal lifts at this time point
+            auto_pedal_lift = False
+            if self.pedal_mode == "Auto":
+                # Auto pedal logic - three conditions for lifting
+                current_bar, current_beat, current_ts = offset_to_bar_beat(time)
+                bar_length = 4.0 * get_time_signature(time)[0] / get_time_signature(time)[1]  # Quarter lengths per bar
                 
+                # Condition 1: Bar boundary (minimum frequency)
+                if time >= auto_last_lift_time + bar_length:
+                    auto_pedal_lift = True
+                
+                # Condition 2: Mass note ending (3+ simultaneous pitches end)
+                if not auto_pedal_lift:
+                    ending_count = 0
+                    for start, end, pitches in note_events:
+                        if end == time:
+                            ending_count += len(pitches)
+                    if ending_count >= 3:
+                        auto_pedal_lift = True
+                
+                # Condition 3: Harmonic shift (pitch collection similarity < 0.5)
+                if not auto_pedal_lift and auto_pedal_collection and active_notes:
+                    intersection = auto_pedal_collection & active_notes
+                    union = auto_pedal_collection | active_notes
+                    similarity = len(intersection) / len(union) if union else 1.0
+                    if similarity < 0.5:
+                        auto_pedal_lift = True
+                
+                if auto_pedal_lift:
+                    pedal_sustained_notes.clear()
+                    pedal_sustained_pitches.clear()
+                    auto_pedal_collection.clear()
+                    auto_last_lift_time = time
+            
+            elif is_pedal_lift_point(time, self.pedal_mode):
+                pedal_sustained_notes.clear()
+                pedal_sustained_pitches.clear()
+                last_pedal_lift_time = time
+                
+            # Track which notes end at this time
+            ending_notes = []
             for start, end, pitches in note_events:
                 if end == time:
+                    ending_notes.extend(pitches)
                     active_notes.difference_update({p % 12 for p in pitches})
                     active_pitches.difference_update(pitches)
 
-                        
+            # Track which notes start at this time        
+            starting_notes = []
             for start, end, pitches in note_events:
                 if start == time:
+                    starting_notes.extend(pitches)
                     active_notes.update({p % 12 for p in pitches})
                     active_pitches.update(pitches)
+                    
+                    # Add to pedal-sustained notes if pedal is active (sustain ALL notes that sound)
+                    if self.pedal_mode != "Off":
+                        pedal_sustained_notes.update({p % 12 for p in pitches})
+                        pedal_sustained_pitches.update(pitches)
+                        
+                        # For auto mode, also update the pitch collection
+                        if self.pedal_mode == "Auto":
+                            auto_pedal_collection.update({p % 12 for p in pitches})
+            
+            # Also add any currently active notes to pedal sustain (notes that were already sounding)
+            if self.pedal_mode != "Off" and active_notes:
+                pedal_sustained_notes.update(active_notes)
+                pedal_sustained_pitches.update(active_pitches)
 
-
-            test_notes = set(active_notes)
-            test_pitches = set(active_pitches)
+            # Combine active notes with pedal-sustained notes for chord detection
+            test_notes = set(active_notes) | pedal_sustained_notes
+            test_pitches = set(active_pitches) | pedal_sustained_pitches
+            
             if self.include_anacrusis:
+                anacrusis_added = []
                 for s_start, s_end, s_pitch in single_notes:
+                    # Only include anacrusis notes that were struck as single pitches in isolation
+                    # and end exactly when the current chord analysis point occurs
+                    # (single_notes already ensures the note was struck alone, not as part of a chord)
                     if s_end == time and (s_pitch % 12) not in test_notes:
                         test_notes.add(s_pitch % 12)
                         test_pitches.add(s_pitch)
+                        anacrusis_added.append(s_pitch)
 
             if len(test_notes) >= 3:
                 # Check for chord formation with sufficient note count
@@ -3601,27 +3966,34 @@ class DriveStrengthParametersDialog:
         self.window.resizable(True, True)
         self.window.transient(parent)
         self.window.grab_set()
-        self.window.configure(bg="white")  # Set white background
+        self.window.configure(bg="#f5f5f5")  # Set light gray background
         
-        # Configure styles for white theme
+        # Configure styles to match main settings dialog
         import platform
         from tkinter import ttk
         style = ttk.Style()
-        style.configure("Dialog.TFrame", background="white")
-        style.configure("Dialog.TLabel", background="white", foreground="black")
-        style.configure("Dialog.TNotebook", background="white")
-        style.configure("Dialog.TNotebook.Tab", background="lightgray", foreground="black")
-        style.configure("Dialog.TButton", background="white", foreground="black")
-        style.configure("Dialog.TEntry", background="white", foreground="black")
+        style.configure("Dialog.TFrame", background="#f5f5f5")
+        style.configure("Dialog.TLabel", background="#f5f5f5", foreground="black", font=("Segoe UI", 9))
+        style.configure("Dialog.TNotebook", background="#f5f5f5", borderwidth=0)
+        style.configure("Dialog.TNotebook.Tab", 
+                       background="#e0e0e0", 
+                       foreground="black", 
+                       padding=[12, 8],
+                       font=("Segoe UI", 9, "bold"))
+        style.map("Dialog.TNotebook.Tab",
+                 background=[("selected", "#f5f5f5"), ("active", "#d0d0d0")])
+        style.configure("Dialog.TButton", background="#e0e0e0", foreground="black", font=("Segoe UI", 9))
+        style.configure("Dialog.TEntry", background="white", foreground="black", font=("Segoe UI", 9))
         style.configure("Dialog.TCombobox", 
                        fieldbackground="white", 
-                       background="white", 
+                       background="#e0e0e0", 
                        foreground="black",
-                       arrowcolor="black")
+                       arrowcolor="black",
+                       font=("Segoe UI", 9))
         
         # Configure LabelFrame style (needed for rules tab)
-        style.configure("Dialog.TLabelFrame", background="white", foreground="black")
-        style.configure("Dialog.TLabelFrame.Label", background="white", foreground="black")
+        style.configure("Dialog.TLabelFrame", background="#f5f5f5", foreground="black", font=("Segoe UI", 9))
+        style.configure("Dialog.TLabelFrame.Label", background="#f5f5f5", foreground="black", font=("Segoe UI", 9, "bold"))
         
         # Center the window
         self.window.update_idletasks()
@@ -3647,23 +4019,47 @@ class DriveStrengthParametersDialog:
         main_frame = ttk.Frame(self.window, style="Dialog.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Create notebook for tabs
-        notebook = ttk.Notebook(main_frame, style="Dialog.TNotebook")
-        notebook.pack(fill=tk.BOTH, expand=True)
+        # Create custom tab buttons with subtle styling
+        tab_button_kwargs = {"bg": "#d0d0d0", "fg": "black", "activebackground": "#e0e0e0", 
+                           "activeforeground": "black", "relief": "raised", "bd": 1, 
+                           "font": ("Segoe UI", 10, "bold"), "width": 20, 
+                           "highlightbackground": "#b0b0b0", "highlightcolor": "#b0b0b0"}
+        
+        # Tab button frame
+        tab_frame = tk.Frame(main_frame, bg="#f5f5f5")
+        tab_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Tab buttons
+        self.chord_tab_btn = tk.Button(tab_frame, text="Chord Base Strengths", 
+                                      command=lambda: self.switch_tab(0), **tab_button_kwargs)
+        self.chord_tab_btn.pack(side=tk.LEFT, padx=(0, 2))
+        
+        self.rules_tab_btn = tk.Button(tab_frame, text="Factor Bonuses", 
+                                      command=lambda: self.switch_tab(1), **tab_button_kwargs)
+        self.rules_tab_btn.pack(side=tk.LEFT)
+        
+        # Content frame for tab panels
+        content_frame = tk.Frame(main_frame, bg="#f5f5f5", relief="sunken", bd=1)
+        content_frame.pack(fill=tk.BOTH, expand=True)
         
         # Chord Strengths Tab
-        strength_frame = ttk.Frame(notebook, style="Dialog.TFrame")
-        notebook.add(strength_frame, text="Chord Base Strengths")
+        self.strength_frame = ttk.Frame(content_frame, style="Dialog.TFrame")
+        self.strength_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Rule Parameters Tab
-        rules_frame = ttk.Frame(notebook, style="Dialog.TFrame")
-        notebook.add(rules_frame, text="Factor Bonuses")
+        # Rule Parameters Tab  
+        self.rules_frame = ttk.Frame(content_frame, style="Dialog.TFrame")
         
-        self.setup_strength_tab(strength_frame)
-        self.setup_rules_tab(rules_frame)
+        # Track current tab
+        self.current_tab = 0
+        
+        self.setup_strength_tab(self.strength_frame)
+        self.setup_rules_tab(self.rules_frame)
 
         # Load current values after both tabs are set up
         self.load_current_values()
+        
+        # Initialize first tab
+        self.switch_tab(0)
         
         # Button frame
         button_frame = ttk.Frame(main_frame, style="Dialog.TFrame")
@@ -3676,10 +4072,33 @@ class DriveStrengthParametersDialog:
         ttk.Button(button_frame, text="Apply", command=self.apply, style="Dialog.TButton").pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="OK", command=self.ok, style="Dialog.TButton").pack(side=tk.RIGHT, padx=(5, 0))
     
+    def switch_tab(self, tab_index):
+        """Switch between tabs using custom button styling."""
+        # Hide all frames
+        self.strength_frame.pack_forget()
+        self.rules_frame.pack_forget()
+        
+        # Update button appearances
+        unselected_style = {"bg": "#d0d0d0", "fg": "black", "relief": "raised", "bd": 1, 
+                           "highlightbackground": "#b0b0b0"}
+        selected_style = {"bg": "#ff00ff", "fg": "white", "relief": "sunken", "bd": 1, 
+                         "highlightbackground": "#b0b0b0"}
+        
+        if tab_index == 0:
+            self.strength_frame.pack(fill=tk.BOTH, expand=True)
+            self.chord_tab_btn.config(**selected_style)
+            self.rules_tab_btn.config(**unselected_style)
+        else:
+            self.rules_frame.pack(fill=tk.BOTH, expand=True)
+            self.rules_tab_btn.config(**selected_style)
+            self.chord_tab_btn.config(**unselected_style)
+        
+        self.current_tab = tab_index
+    
     def setup_strength_tab(self, parent):
         """Setup the chord strength configuration tab."""
         # Scrollable frame
-        canvas = tk.Canvas(parent, bg="white")
+        canvas = tk.Canvas(parent, bg="#f5f5f5")
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas, style="Dialog.TFrame")
         
@@ -3695,11 +4114,11 @@ class DriveStrengthParametersDialog:
         header_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(header_frame, text="Chord Base Strengths", font=("Arial", 12, "bold"), style="Dialog.TLabel").pack()
+        ttk.Label(header_frame, text="Chord Base Strengths", font=("Segoe UI", 12, "bold"), style="Dialog.TLabel").pack()
         ttk.Label(header_frame, text="Configure the base strength points for each chord type (Range: 0-100)", 
                  font=("Arial", 9), style="Dialog.TLabel").pack(pady=(5, 0))
         ttk.Label(header_frame, text="A score of 0 will remove this drive from the search", 
-                 font=("Arial", 9, "italic"), foreground="red", style="Dialog.TLabel").pack(pady=(2, 0))
+                 font=("Arial", 9, "italic"), foreground="#ff3399", style="Dialog.TLabel").pack(pady=(2, 0))
         
         # Chord strength entries with proper centering
         strength_entries_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
@@ -3754,7 +4173,7 @@ class DriveStrengthParametersDialog:
     def setup_rules_tab(self, parent):
         """Setup the rule parameters configuration tab."""
         # Scrollable frame
-        canvas = tk.Canvas(parent, bg="white")
+        canvas = tk.Canvas(parent, bg="#f5f5f5")
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas, style="Dialog.TFrame")
         
@@ -3770,64 +4189,96 @@ class DriveStrengthParametersDialog:
         header_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(header_frame, text="Factor Bonus Parameters", font=("Arial", 12, "bold"), style="Dialog.TLabel").pack()
+        ttk.Label(header_frame, text="Factor Bonus Parameters", font=("Segoe UI", 12, "bold"), style="Dialog.TLabel").pack()
         
         # Rules entries with proper centering
         rules_entries_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
         rules_entries_frame.pack(expand=True, padx=80, pady=10)
         
-        # Define rule descriptions with icons and enhanced tooltips
+        # Load info button image for tooltips
+        try:
+            from PIL import Image, ImageTk
+            info_img_path = resource_path(os.path.join("assets", "images", "info_button.png"))
+            info_img = Image.open(info_img_path)
+            info_photo = ImageTk.PhotoImage(info_img)
+        except Exception as e:
+            print(f"Warning: Could not load info button image: {e}")
+            info_photo = None
+        
+        # Define rule descriptions with enhanced tooltips
         rule_descriptions = [
-            ("rule1_bass_support", "Factor 1: Bass Support", "♪", "Adds points when the bass note supports the chord root. Bass foundation strengthens harmonic clarity.", "(0-100)"),
-            ("rule2_tonic_dominant", "Factor 2: Tonic-Dominant Relationship", "🎯", "Bonus points awarded to the dominant chord of the selected tonic key. Strengthens tonal center relationships.", "(0-100)"),
-            ("rule3_root_repetition", "Factor 3: Root Repetition (per occurrence)", "⟲", "Cumulative bonus for each repeated root note. Reinforcement through repetition increases drive strength.", "(0-100)"),
-            ("rule4_resolution_max", "Factor 4: Proportional Resolution (maximum)", "↗", "Maximum bonus awarded for strong resolution patterns. Tension and release create musical momentum.", "(0-100)"),
-            ("rule5_clean_voicing", "Factor 5: Clean Voicing", "✓", "Bonus for clean, well-structured chord arrangements. Clear voicing enhances harmonic impact.", "(0-100)"),
-            ("rule6_same_chord", "Factor 6a: Same Chord Continuation", "→", "Bonus when the same chord continues from the previous event. Harmonic stability creates forward motion.", "(0-100)"),
-            ("rule6_dominant_prep", "Factor 6b: Dominant Preparation", "◉", "Bonus when the previous chord was a dominant. Dominant preparation enhances resolution strength.", "(0-100)"),
-            ("rule7_root_doubled", "Factor 7a: Root Doubled", "②", "Bonus when the chord root appears exactly twice. Root doubling strengthens harmonic foundation.", "(0-100)"),
-            ("rule7_root_tripled", "Factor 7b: Root Tripled+", "③", "Bonus when the chord root appears three or more times. Multiple roots create powerful harmonic drive.", "(0-100)")
+            ("rule1_bass_support", "Factor 1: Bass Support", "Adds points when the bass note supports the drive's root. Bass foundation strengthens harmonic clarity.", "(0-100)"),
+            ("rule2_tonic_dominant", "Factor 2: Tonic-Dominant Relationship", "Bonus points awarded to the dominant drive of the selected tonic key. Strengthens tonal center relationships. Only select tonic if this is clear.", "(0-100)"),
+            ("rule3_root_repetition", "Factor 3: Drive Repetition (per occurrence)", "Cumulative bonus for each repeated drive of any type associated with a given root note. Reinforcement through repetition increases drive strength.", "(0-100)"),
+            ("rule4_resolution_max", "Factor 4: Proportional Resolution (maximum)", "Bonus given to proportional representation of the drive in the piece.", "(0-100)"),
+            ("rule5_clean_voicing", "Factor 5: Clean Voicing", "Bonus for clean drive presentation. Clear voicing enhances harmonic impact.", "(0-100)"),
+            ("rule6_same_chord", "Factor 6a: Same Chord Continuation", "Bonus when the same drive continues from the previous event.", "(0-100)"),
+            ("rule6_dominant_prep", "Factor 6b: Dominant Preparation", "Bonus when the previous drive was a dominant.", "(0-100)"),
+            ("rule7_root_doubled", "Factor 7a: Root Doubled", "Bonus when the drive root appears exactly twice. Root doubling strengthens harmonic foundation.", "(0-100)"),
+            ("rule7_root_tripled", "Factor 7b: Root Tripled+", "Bonus when the drive root appears three or more times. Multiple roots create powerful harmonic drive.", "(0-100)")
         ]
         
-        for rule_key, rule_name, icon, tooltip, range_text in rule_descriptions:
-            # Rule frame
-            rule_frame = ttk.LabelFrame(rules_entries_frame, text=rule_name, padding=10)
+        for rule_key, rule_name, tooltip, range_text in rule_descriptions:
+            # Rule frame with title and info button
+            rule_frame = ttk.LabelFrame(rules_entries_frame, text="", padding=10)
             rule_frame.pack(fill=tk.X, pady=5)
             
-            # Single horizontal frame for icon and entry
+            # Header frame for title and info button
+            header_frame = ttk.Frame(rule_frame, style="Dialog.TFrame")
+            header_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            # Title label
+            title_label = ttk.Label(header_frame, text=rule_name, font=("Segoe UI", 11, "bold"), style="Dialog.TLabel")
+            title_label.pack(side=tk.LEFT)
+            
+            # Info button with tooltip
+            if info_photo:
+                info_label = tk.Label(header_frame, image=info_photo, bd=0, bg="#f5f5f5", highlightthickness=0, cursor="hand2")
+                info_label.image = info_photo  # Keep a reference
+            else:
+                # Fallback to text if image fails to load
+                info_label = tk.Label(header_frame, text="i", bg="#1f4788", fg="white", 
+                                    font=("Arial", 8, "bold"), width=2, height=1, relief="flat", cursor="hand2")
+            info_label.pack(side=tk.LEFT, padx=(8, 0))
+            
+            # Add tooltip with proper hide on mouse leave
+            tooltip_window_ref = [None]  # Use list to allow modification in nested functions
+            
+            def show_tooltip(event, tooltip_text=tooltip):
+                # Hide any existing tooltip first
+                if tooltip_window_ref[0]:
+                    try:
+                        tooltip_window_ref[0].destroy()
+                    except:
+                        pass
+                
+                # Simple tooltip implementation
+                tooltip_window = tk.Toplevel(rule_frame)
+                tooltip_window_ref[0] = tooltip_window
+                tooltip_window.wm_overrideredirect(True)
+                tooltip_window.configure(bg="#333333")
+                x = event.widget.winfo_rootx() + 20
+                y = event.widget.winfo_rooty() + 20
+                tooltip_window.geometry(f"+{x}+{y}")
+                
+                label = tk.Label(tooltip_window, text=tooltip_text, bg="#333333", fg="white", 
+                               font=("Arial", 9), wraplength=300, justify="left", padx=8, pady=4)
+                label.pack()
+            
+            def hide_tooltip(event=None):
+                if tooltip_window_ref[0]:
+                    try:
+                        tooltip_window_ref[0].destroy()
+                        tooltip_window_ref[0] = None
+                    except:
+                        pass
+            
+            info_label.bind("<Enter>", show_tooltip)
+            info_label.bind("<Leave>", hide_tooltip)
+            
+            # Content frame for entry controls
             content_frame = ttk.Frame(rule_frame, style="Dialog.TFrame")
             content_frame.pack(fill=tk.X, pady=(5, 0))
-            
-            # Icon label with tooltip (left side)
-            icon_label = ttk.Label(content_frame, text=icon, font=("Arial", 14), style="Dialog.TLabel")
-            icon_label.pack(side=tk.LEFT, padx=(0, 15))
-            
-            # Create tooltip for the icon
-            def create_tooltip(widget, text):
-                def on_enter(event):
-                    tooltip_window = tk.Toplevel()
-                    tooltip_window.wm_overrideredirect(True)
-                    tooltip_window.configure(bg="lightyellow", bd=1, relief="solid")
-                    
-                    label = tk.Label(tooltip_window, text=text, bg="lightyellow", 
-                                   font=("Arial", 9), wraplength=300, justify="left", padx=5, pady=3)
-                    label.pack()
-                    
-                    x = widget.winfo_rootx() + 20
-                    y = widget.winfo_rooty() + 20
-                    tooltip_window.geometry(f"+{x}+{y}")
-                    
-                    widget.tooltip_window = tooltip_window
-                
-                def on_leave(event):
-                    if hasattr(widget, 'tooltip_window'):
-                        widget.tooltip_window.destroy()
-                        del widget.tooltip_window
-                
-                widget.bind("<Enter>", on_enter)
-                widget.bind("<Leave>", on_leave)
-            
-            create_tooltip(icon_label, tooltip)
             
             # Special handling for Factor 2 (Tonic-Dominant)
             if rule_key == "rule2_tonic_dominant":
