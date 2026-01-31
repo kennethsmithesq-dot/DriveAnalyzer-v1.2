@@ -1,4 +1,4 @@
-Harmonic Drive Analyzer V1.2
+Harmonic Drive Analyzer V1.3
 
 Drive Analyzer is a tool for analysing musical events (chords/notes) in an xml music score; it searches for common chord configurations (triads / sevenths etc). It shows results in a grid and can export PDF output. It is a useful method of analysing 20th century art-music in the western tradition, which, through its tonal complexity, often obscures diatonic drive. It may, however, have other uses.
 The method of musical analysis – “drive analysis” – is explained at www.chromatic-harmony.com/drive-analyzer.html and complements Kenneth Smith’s book, Desire in Chromatic Harmony (OUP, 2020).
