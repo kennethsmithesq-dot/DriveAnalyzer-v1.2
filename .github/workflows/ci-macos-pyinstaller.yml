@@ -314,11 +314,11 @@ jobs:
       - name: Upload Mac release package
         uses: actions/upload-artifact@v4
         with:
-          name: drive-analyzer-v1-2-mac
+          name: drive-analyzer-v1-3-mac
           path: mac_release/
 
       - name: Upload Windows release package
         uses: actions/upload-artifact@v4
         with:
-          name: drive-analyzer-v1-2
+          name: drive-analyzer-v1-3
           path: windows_release/
