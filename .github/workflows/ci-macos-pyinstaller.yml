@@ -1,4 +1,4 @@
-name: Drive Analyzer Releases V1.2 (macOS x86_64 + arm64 + Windows)
+name: Drive Analyzer Releases V1.3 (macOS x86_64 + arm64 + Windows)
 
 on:
   pull_request:
