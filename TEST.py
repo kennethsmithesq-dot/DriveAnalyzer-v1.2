@@ -239,7 +239,32 @@ class MidiChordAnalyzer(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("🎵 MIDI Drive Analyzer")
-        self.geometry("650x850")
+        
+        # Set window size and position intelligently
+        window_width = 650
+        window_height = 850
+        settings_width = 350  # Anticipated settings dialog width
+        
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Calculate position to ensure both main window and settings fit on screen
+        total_width = window_width + settings_width
+        
+        # Position main window higher and ensure room for settings
+        if total_width < screen_width:
+            # Center the combined width, but position main window higher
+            x = (screen_width - total_width) // 2
+        else:
+            # If too wide, position at left edge
+            x = 20
+            
+        # Position window in upper third of screen, with taskbar consideration
+        y = max(50, (screen_height - window_height) // 4)
+        
+        # Apply geometry with position
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.configure(bg="black")
 
         # Configure dark theme styles
@@ -327,10 +352,10 @@ class MidiChordAnalyzer(tk.Tk):
             btn_kwargs = {}
             disabled_fg = "#cccccc"
         else:
-            btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", 
-                         "activeforeground": "#fff", "relief": "raised", "bd": 2, 
-                         "font": ("Segoe UI", 10, "bold")}
-            disabled_fg = "black"
+            btn_kwargs = {"bg": "#ffffff", "fg": "#000000", "activebackground": "#f0f0f0", 
+                         "activeforeground": "#000000", "relief": "raised", "bd": 2, 
+                         "font": ("Segoe UI", 10)}
+            disabled_fg = "#808080"
 
         tk.Button(frame, text="Load XML", command=self.load_music_file, **btn_kwargs).pack(side="left", padx=5)
         self.settings_btn = tk.Button(
@@ -382,9 +407,9 @@ class MidiChordAnalyzer(tk.Tk):
 
         # Main analysis results display with dark theme and proper text selection
         self.result_text = Text(
-            self, bg="black", fg="white", font=("Consolas", 11),
+            self, bg="black", fg="white", font=("Segoe UI", 11),
             wrap="word", borderwidth=0, highlightthickness=0,
-            selectbackground="blue", selectforeground="white",  # Visible selection colors
+            selectbackground="magenta", selectforeground="white",  # Visible selection colors
             insertbackground="white", relief="flat", padx=0, pady=0,
             insertborderwidth=0, insertwidth=0, 
             highlightbackground="black", highlightcolor="black"
@@ -423,6 +448,9 @@ class MidiChordAnalyzer(tk.Tk):
         self.result_text.delete("1.0", "end")
         # Configure text spacing to eliminate gray stripes
         self.result_text.configure(spacing1=0, spacing2=0, spacing3=0)
+        
+        # Configure Segoe UI font tag for splash text
+        self.result_text.tag_configure("splash_font", font=("Segoe UI", 11), foreground="white")
         # Insert the title.png image centered
         try:
             from PIL import Image, ImageTk
@@ -434,19 +462,37 @@ class MidiChordAnalyzer(tk.Tk):
             self.result_text.window_create("1.0", window=title_label)
             self.result_text.insert("end", "\n")
         except Exception as e:
+            # Insert fallback title with Segoe UI font
+            start_pos = self.result_text.index("end")
             self.result_text.insert("end", "Harmonic Drive Analyzer\n")
+            end_pos = self.result_text.index("end")
+            self.result_text.tag_add("splash_font", start_pos, end_pos)
             print("Splash image load error:", e)
         description = (
-            "• Analyze MusicXML scores\n"
-            "• Model patterns of harmonic tension\n"
-            "• Produce PDF graph of tension-release patterns\n"
-            "• Model harmonic entropy\n\n"
-            "For information on drive analysis, see: http://www.chromatic-harmony.com/drive_analysis.html\n"
-            "\n"
+"\n"
+"• Analyze MusicXML scores\n"
+"• Model patterns of harmonic tension\n"
+"• Produce PDF graph of tension-release patterns\n"
+"• Model harmonic entropy\n\n"
+"For information on drive analysis, see: http://www.chromatic-harmony.com/drive_analysis.html\n"
+"\n"
             "Kenneth Smith, Desire in Chromatic Harmony (New York: Oxford University Press, 2020).\n"
             "Kenneth Smith, “The Enigma of Entropy in Extended Tonality.” Music Theory Spectrum 43, no. 1 (2021): 1–18."
         )
+        
+        # Insert description text with Segoe UI font
+        start_pos = self.result_text.index("end")
         self.result_text.insert("end", description)
+        end_pos = self.result_text.index("end")
+        self.result_text.tag_add("splash_font", start_pos, end_pos)
+        
+        # Add copyright notice
+        copyright_text = "\n\n© Kenneth Smith, 2026"
+        copyright_start = self.result_text.index("end")
+        self.result_text.insert("end", copyright_text)
+        copyright_end = self.result_text.index("end")
+        self.result_text.tag_add("splash_font", copyright_start, copyright_end)
+        
         self.result_text.configure(state="disabled")
        
     def preview_entropy(self, mode: str = "chord", base: int = 2):
@@ -527,8 +573,26 @@ class MidiChordAnalyzer(tk.Tk):
         """Open analysis settings dialog with algorithm options and sensitivity controls."""
         dialog = tk.Toplevel(self)
         dialog.title("Analysis Settings")
-        dialog.geometry("450x850")
         dialog.configure(bg="#f5f5f5")  # Set light grey background
+        
+        # Position dialog flush to the right of main window with matching height
+        dialog.update_idletasks()
+        
+        # Get main window position and dimensions
+        main_x = self.winfo_x()
+        main_y = self.winfo_y() 
+        main_width = self.winfo_width()
+        main_height = self.winfo_height()
+        
+        # Settings dialog dimensions
+        settings_width = 350
+        settings_height = main_height  # Match main window height
+        
+        # Position exactly to the right of main window
+        settings_x = main_x + main_width
+        settings_y = main_y
+        
+        dialog.geometry(f"{settings_width}x{settings_height}+{settings_x}+{settings_y}")
 
         # Load and display settings title image at top center
         try:
@@ -542,7 +606,7 @@ class MidiChordAnalyzer(tk.Tk):
         except Exception as e:
             print(f"Warning: Could not load settings title image: {e}")
             # Fallback text title if image fails
-            fallback_title = tk.Label(dialog, text="Analysis Settings", font=("Arial", 16, "bold"), 
+            fallback_title = tk.Label(dialog, text="Analysis Settings", font=("Segoe UI", 16, "bold"), 
                                     bg="#f5f5f5", fg="black")
             fallback_title.pack(pady=(10, 15))
 
@@ -588,8 +652,8 @@ class MidiChordAnalyzer(tk.Tk):
         style = ttk.Style()
         style.configure("Settings.TCheckbutton", background="#f5f5f5", foreground="black")
         style.configure("Settings.TLabel", background="#f5f5f5", foreground="black")
-        style.configure("Settings.Heading.TLabel", background="#f5f5f5", foreground="black", font=("Arial", 12))
-        style.configure("Settings.Info.TLabel", background="#1f4788", foreground="white", font=("Arial", 8, "bold"), 
+        style.configure("Settings.Heading.TLabel", background="#f5f5f5", foreground="black", font=("Segoe UI", 11))
+        style.configure("Settings.Info.TLabel", background="#1f4788", foreground="white", font=("Segoe UI", 8, "bold"), 
                        relief="flat", borderwidth=0, anchor="center", width=2, padding=(8, 6))
         style.configure("Settings.TFrame", background="#f5f5f5")
         style.configure("Settings.TButton", background="white", foreground="black")
@@ -637,7 +701,7 @@ class MidiChordAnalyzer(tk.Tk):
                 tooltip_window.geometry(f"+{x}+{y}")
                 
                 label = tk.Label(tooltip_window, text=tooltip, bg="#333333", fg="white", 
-                               font=("Arial", 9), wraplength=250, justify="left", padx=8, pady=4)
+                               font=("Segoe UI", 9), wraplength=250, justify="left", padx=8, pady=4)
                 label.pack()
             
             def hide_tooltip(event=None):
@@ -810,17 +874,17 @@ class MidiChordAnalyzer(tk.Tk):
         
         # Map current position to sensitivity level
         current_pos = getattr(self, 'collapse_sensitivity_pos', 3)
-        pos_to_sensitivity = {1: "Finest detail", 2: "Fine detail", 3: "Standard", 5: "Broad grouping", 7: "Broadest strokes"}
+        pos_to_sensitivity = {1: "Record all variations", 2: "Capture small changes", 3: "Default", 5: "Focus on clear changes", 7: "Show only major shifts"}
         sensitivity_options = [
-            "Finest detail - record every variation as separate events",
-            "Fine detail - capture subtle differences between events", 
-            "Standard - balanced detection of meaningful changes",
-            "Broad grouping - merge similar events, focus on clear changes",
-            "Broadest strokes - group aggressively, show only major shifts"
+            "Record all variations",
+            "Capture small changes", 
+            "Default",
+            "Focus on clear changes",
+            "Show only major shifts"
         ]
         
         # Find current setting
-        current_sensitivity_short = pos_to_sensitivity.get(current_pos, "Standard")
+        current_sensitivity_short = pos_to_sensitivity.get(current_pos, "Default")
         current_sensitivity_full = next((opt for opt in sensitivity_options if opt.startswith(current_sensitivity_short)), sensitivity_options[2])
         
         event_sensitivity_var = tk.StringVar(value=current_sensitivity_full)
@@ -899,11 +963,11 @@ class MidiChordAnalyzer(tk.Tk):
             # Read event sensitivity setting and map to slider position
             selected_sensitivity = event_sensitivity_var.get()
             sensitivity_to_pos = {
-                "Finest detail - record every variation as separate events": 1,
-                "Fine detail - capture subtle differences between events": 2,
-                "Standard - balanced detection of meaningful changes": 3,
-                "Broad grouping - merge similar events, focus on clear changes": 5,
-                "Broadest strokes - group aggressively, show only major shifts": 7
+                "Record all variations": 1,
+                "Capture small changes": 2,
+                "Default": 3,
+                "Focus on clear changes": 5,
+                "Show only major shifts": 7
             }
             pos = sensitivity_to_pos.get(selected_sensitivity, 3)
             self.collapse_sensitivity_pos = pos
@@ -925,7 +989,8 @@ class MidiChordAnalyzer(tk.Tk):
             self.merge_bar_distance = chosen["bar"]
             self.merge_diff_max = chosen["diff"]
 
-            dialog.destroy()
+            # Don't destroy dialog - let user close with X button
+            # dialog.destroy()  # Removed - settings stay open after Apply
             
             # Re-run analysis with new settings if file is loaded
             if self.score:
@@ -952,24 +1017,43 @@ class MidiChordAnalyzer(tk.Tk):
             except Exception:
                 pass
 
-        # Add settings apply instruction image at bottom
-        try:
-            apply_img_path = resource_path(os.path.join("assets", "images", "settings_apply.png"))
-            apply_img = Image.open(apply_img_path)
-            # Resize to 400 pixels wide, maintaining aspect ratio
-            original_width, original_height = apply_img.size
-            new_width = 400
-            new_height = int((new_width / original_width) * original_height)
-            apply_img = apply_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            apply_photo = ImageTk.PhotoImage(apply_img)
-            apply_label = tk.Label(scrollable_frame, image=apply_photo, bd=0, bg="#f5f5f5", highlightthickness=0)
-            apply_label.image = apply_photo  # Keep a reference
-            apply_label.pack(pady=(20, 15), anchor="e")
-        except Exception as e:
-            print(f"Warning: Could not load settings apply image: {e}")
+        # Add buttons at bottom
+        button_frame = tk.Frame(scrollable_frame, bg="#f5f5f5")
+        button_frame.pack(fill=tk.X, pady=(15, 10), padx=0)
+        
+        # Restore defaults function
+        def restore_defaults():
+            # Reset all variables to their actual default values
+            analysis_mode_var.set("event")
+            segment_size_var.set("beats")
+            include_triads_var.set(True)
+            remove_repeats_var.set(True)
+            include_anacrusis_var.set(True)
+            arpeggio_searching_var.set(True)
+            neighbour_notes_var.set(True)
+            include_non_drive_var.set(True)
+            pedal_enabled_var.set(False)
+            pedal_mode_var.set("Off")
+            duration_filter_enabled_var.set(False)
+            duration_threshold_var.set("8th notes")
+            event_sensitivity_var.set("Default")
+        
+        # Restore defaults button (left side) - now pink
+        defaults_btn = tk.Button(button_frame, text="Restore defaults", command=restore_defaults,
+                               bg="#ffffff", fg="#000000", font=("Segoe UI", 10),
+                               relief="raised", bd=2, width=14)
+        
+        # Apply button (right side)
+        apply_btn = tk.Button(button_frame, text="Apply", command=apply_settings,
+                             bg="#ffffff", fg="#000000", font=("Segoe UI", 10),
+                             relief="raised", bd=2, width=12)
+        
+        # Pack both buttons to the right side
+        apply_btn.pack(side=tk.RIGHT, padx=(0, 0))
+        defaults_btn.pack(side=tk.RIGHT, padx=(5, 5))
 
-        # Set up auto-apply on dialog close
-        dialog.protocol("WM_DELETE_WINDOW", apply_settings)
+        # Set up normal dialog close (no auto-apply)
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
 
     def display_results(self, lines: list[str] = None):
         self.result_text.config(state="normal")
@@ -1048,9 +1132,15 @@ class MidiChordAnalyzer(tk.Tk):
                         elif root_count >= 3:
                             marker += ROOT3_SYMBOL
                         chord_strs.append(f"{chord}{marker}")
-                    chords_display = ", ".join(chord_strs) if chord_strs else "no known drive"
+                    chords_display = ", ".join(chord_strs) if chord_strs else ""
                     bass = "+".join(data["basses"])
                     is_no_drive = len(chord_strs) == 0
+                    
+                    # Format output based on whether there are known chords
+                    if is_no_drive:
+                        line_content = f"(bass = {bass})"
+                    else:
+                        line_content = f"{chords_display} (bass = {bass})"
                     # Deduplicate at output: skip if previous was also no known drive with same bass
                     if is_no_drive and prev_no_drive and bass == prev_bass:
                         continue
@@ -1061,7 +1151,7 @@ class MidiChordAnalyzer(tk.Tk):
                     # This event will be displayed, so add it to our list
                     displayed_events.append(((bar, beat, ts), data))
                     output_lines.append(
-                        f"Bar {bar}, Beat {beat} ({ts}): {chords_display} (bass = {bass})\n"
+                        f"Bar {bar}, Beat {beat} ({ts}): {line_content}\n"
                     )
                     prev_no_drive = is_no_drive
                     prev_bass = bass
@@ -1071,7 +1161,15 @@ class MidiChordAnalyzer(tk.Tk):
                 output_lines.append(
                     f"\nLegend:\n{CLEAN_STACK_SYMBOL} = Clean stack   {ROOT2_SYMBOL} = Root doubled   {ROOT3_SYMBOL} = Root tripled or more\n"
                 )
-                self.result_text.insert("end", "".join(output_lines))
+                # Replace musical symbols before displaying - only after note names
+                import re
+                final_output = "".join(output_lines)
+                # Replace flats: note names followed by 'b' OR 'b' followed by numbers (chord extensions)
+                final_output = re.sub(r'([ABCDEFG])b', r'\1♭', final_output)  # Direct note flats like Db
+                final_output = re.sub(r'b([0-9]+)', r'♭\1', final_output)  # Chord extensions like b5, b9
+                # Replace sharps: note names (A-G) followed by '#'
+                final_output = re.sub(r'([ABCDEFG])#', r'\1♯', final_output)
+                self.result_text.insert("end", final_output)
         self.result_text.config(state="disabled")
 
 
@@ -2329,7 +2427,7 @@ class MidiChordAnalyzer(tk.Tk):
 
         # Use the EXACT same processed events that the list display shows
         grid_events = dict(self.processed_events)
-        gw = GridWindow(self, grid_events)
+        gw = GridWindow(self, grid_events, main_app=self)
         # Keep a reference so it can be refreshed when settings change
         self._grid_window = gw
 
@@ -2933,10 +3031,11 @@ class GridWindow(tk.Toplevel):
 
         return {k: v for k, v in filtered}
 
-    def __init__(self, parent, events):
+    def __init__(self, parent, events, main_app=None):
         super().__init__(parent)
         self.title("Chord Grid Visualization")
         self.configure(bg="white")
+        self.main_app = main_app  # Store reference to main application
         
         # Configure white theme for GridWindow ttk widgets
         import platform
@@ -3083,7 +3182,7 @@ class GridWindow(tk.Toplevel):
                 try:
                     # Simple fallback text
                     fallback_text = root.replace('b', '♭').replace('#', '♯')
-                    self.left_canvas.create_text(left_col_width - 8, y, text=fallback_text, anchor='e', font=("Arial", 12), fill="black")
+                    self.left_canvas.create_text(left_col_width - 8, y, text=fallback_text, anchor='e', font=("Segoe UI", 12), fill="black")
                 except Exception as ex:
                     print(f"[ERROR] Failed to create fallback label for root {root}: {ex}")
         
@@ -4019,10 +4118,10 @@ class DriveStrengthParametersDialog:
         main_frame = ttk.Frame(self.window, style="Dialog.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Create custom tab buttons with subtle styling
-        tab_button_kwargs = {"bg": "#d0d0d0", "fg": "black", "activebackground": "#e0e0e0", 
-                           "activeforeground": "black", "relief": "raised", "bd": 1, 
-                           "font": ("Segoe UI", 10, "bold"), "width": 20, 
+        # Create custom tab buttons with clean white styling to match main GUI
+        tab_button_kwargs = {"bg": "#ffffff", "fg": "#000000", "activebackground": "#f0f0f0", 
+                           "activeforeground": "#000000", "relief": "raised", "bd": 2, 
+                           "font": ("Segoe UI", 10), "width": 20, 
                            "highlightbackground": "#b0b0b0", "highlightcolor": "#b0b0b0"}
         
         # Tab button frame
@@ -4081,7 +4180,7 @@ class DriveStrengthParametersDialog:
         # Update button appearances
         unselected_style = {"bg": "#d0d0d0", "fg": "black", "relief": "raised", "bd": 1, 
                            "highlightbackground": "#b0b0b0"}
-        selected_style = {"bg": "#ff00ff", "fg": "white", "relief": "sunken", "bd": 1, 
+        selected_style = {"bg": "#808080", "fg": "white", "relief": "sunken", "bd": 1, 
                          "highlightbackground": "#b0b0b0"}
         
         if tab_index == 0:
@@ -4116,9 +4215,9 @@ class DriveStrengthParametersDialog:
         
         ttk.Label(header_frame, text="Chord Base Strengths", font=("Segoe UI", 12, "bold"), style="Dialog.TLabel").pack()
         ttk.Label(header_frame, text="Configure the base strength points for each chord type (Range: 0-100)", 
-                 font=("Arial", 9), style="Dialog.TLabel").pack(pady=(5, 0))
+                 font=("Segoe UI", 9), style="Dialog.TLabel").pack(pady=(5, 0))
         ttk.Label(header_frame, text="A score of 0 will remove this drive from the search", 
-                 font=("Arial", 9, "italic"), foreground="#ff3399", style="Dialog.TLabel").pack(pady=(2, 0))
+                 font=("Segoe UI", 9, "italic"), foreground="#808080", style="Dialog.TLabel").pack(pady=(2, 0))
         
         # Chord strength entries with proper centering
         strength_entries_frame = ttk.Frame(scrollable_frame, style="Dialog.TFrame")
@@ -4163,7 +4262,7 @@ class DriveStrengthParametersDialog:
             entry.pack(side=tk.LEFT, padx=(10, 5))
             
             # Range label
-            ttk.Label(center_frame, text="(0-100)", font=("Arial", 8), foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
+            ttk.Label(center_frame, text="(0-100)", font=("Segoe UI", 8), foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
             
             row += 1
         
@@ -4238,7 +4337,7 @@ class DriveStrengthParametersDialog:
             else:
                 # Fallback to text if image fails to load
                 info_label = tk.Label(header_frame, text="i", bg="#1f4788", fg="white", 
-                                    font=("Arial", 8, "bold"), width=2, height=1, relief="flat", cursor="hand2")
+                                    font=("Segoe UI", 8, "bold"), width=2, height=1, relief="flat", cursor="hand2")
             info_label.pack(side=tk.LEFT, padx=(8, 0))
             
             # Add tooltip with proper hide on mouse leave
@@ -4262,7 +4361,7 @@ class DriveStrengthParametersDialog:
                 tooltip_window.geometry(f"+{x}+{y}")
                 
                 label = tk.Label(tooltip_window, text=tooltip_text, bg="#333333", fg="white", 
-                               font=("Arial", 9), wraplength=300, justify="left", padx=8, pady=4)
+                               font=("Segoe UI", 9), wraplength=300, justify="left", padx=8, pady=4)
                 label.pack()
             
             def hide_tooltip(event=None):
@@ -4303,7 +4402,7 @@ class DriveStrengthParametersDialog:
                 tonic_combo.pack(side=tk.LEFT, padx=(5, 10))
                 
                 # Range label
-                ttk.Label(content_frame, text=range_text, font=("Arial", 8), 
+                ttk.Label(content_frame, text=range_text, font=("Segoe UI", 8), 
                          foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
             else:
                 # Standard handling for other factors
@@ -4317,7 +4416,7 @@ class DriveStrengthParametersDialog:
                 entry.pack(side=tk.LEFT, padx=(5, 0))
                 
                 # Range label
-                ttk.Label(content_frame, text=range_text, font=("Arial", 8), 
+                ttk.Label(content_frame, text=range_text, font=("Segoe UI", 8), 
                          foreground="gray", style="Dialog.TLabel").pack(side=tk.LEFT, padx=(5, 0))
         
         canvas.pack(side="left", fill="both", expand=True)
